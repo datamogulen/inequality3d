@@ -101,6 +101,6 @@ function getPipSeries(country, measure, wantYear, currency) {
   const max = Math.max(...brackets.map((b) => b.v));
   return {
     brackets, year: best, median, max, clampedNeg: false, dropped: 0,
-    welfare: pip.welfare?.[best] === "consumption" ? "konsumtion" : "disp. inkomst",
+    welfare: pip.welfare?.[best] ?? "income",
   };
 }

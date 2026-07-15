@@ -1,18 +1,24 @@
-# Ojämlikhet i 3D
+# Inequality in 3D / Ojämlikhet i 3D
 
-Interaktiv webbsida som visualiserar **inkomst-, förmögenhets- och
-CO₂-ojämlikhet per percentil** för 25 länder, i tre 3D-former som kan
-**exporteras som STL** och skrivas ut på en 3D-skrivare (Bambu).
+Interaktiv webbsida (svenska/engelska) som visualiserar **inkomst-,
+förmögenhets- och CO₂-ojämlikhet per percentil** för 25 länder, i tre
+3D-former som kan **exporteras som STL** och skrivas ut på en
+3D-skrivare (Bambu).
 
-**Live: <https://hedin.it/ojamlikhet3d/>**
+*Interactive web page (Swedish/English) visualizing income, wealth and
+carbon-footprint inequality per percentile for 25 countries, as three 3D
+shapes exportable as 3D-printable STL models.*
+
+**Live: <https://hedin.it/inequality3d/>**
 
 ## Bakgrund
 
 Byggt som experiment: hela projektet – datakällsval, hämtning från två
 API:er, webbapp, STL-generering med gravyr, verifiering – skapades av
 Claude (Fable 5) i **en session utifrån en enda prompt** (2026-07-15),
-plus en uppföljning ("pusha till GitHub och hedin.it"). Ursprungsprompten
-i sin helhet:
+plus två uppföljningar (publicering till GitHub/hedin.it; toppdel som
+egen utskrivbar del, textinlägg för flerfärg, sv/en och OG-taggar).
+Ursprungsprompten i sin helhet:
 
 > Jag vill nu göra först en interaktiv webbsida som visualiserar dessa
 > ojämlikhetsmått [inkomstfördelning per centil eller finare per land,
@@ -59,12 +65,25 @@ Sidan är självförsörjande (three.js och opentype.js ligger vendorerade i
     rikaste centilen längst bort till höger.
 - **Toppupplösning**: hela centiler 0–99, tiondelar 99–99,9 och
   hundradelar 99,9–99,99 + p99,99–100 (118 klasser) från WID.
-- **Kapa höjd**: linjär skala gör toppen meterhög – sätt t.ex. 60 mm
-  för utskrift (kapade staplar plattas av och räknas i etiketten).
+- **Toppen utelämnas** (standard: topp 1 %; även 0,1 %/0,01 % eller
+  inget) så att resten av fördelningen syns – och visas i stället som en
+  **egen toppdel** bredvid modellen i verklig höjd, med lika breda
+  klasser. Toppdelen kan exporteras som egen STL i **liggande segment**
+  (valbar längd, standard 240 mm) som limmas ihop för att visa hur hög
+  toppen faktiskt är – USA:s topprocent i inkomst är ~2 m vid
+  0,5 mm/10 000 USD.
+- **Kapa höjd** finns också kvar som alternativ (kapade staplar plattas
+  av och räknas i etiketten).
 - **STL-export** per modell: mm-skala, plint med landsnamnet graverat
   (0,6 mm djupt) i botten, speglat så det läses rättvänt underifrån.
-  Font: Open Sans Bold (öppen licens). Geometrin är verifierad
+  Font: Open Sans Bold (öppen licens). Dessutom en **inläggs-STL**
+  (”text”) med bokstäverna som egen solid i samma koordinatsystem – den
+  jackar i gravyren och kan skrivas ut i annan färg (krymp 0,05–0,1 mm
+  med XY-kompensering i slicern om den sitter trångt; skriv ut med
+  ovansidan mot bädden som filen ligger). Geometrin är verifierad
   vattentät (`node scripts/check_geometry.mjs`).
+- **Språk**: svenska/engelska (auto via webbläsaren, växlare i sidofältet,
+  `?lang=sv`/`?lang=en` fungerar också). Gravyren följer valt språk.
 
 ## Datakällor
 
@@ -94,6 +113,8 @@ R-paket (nyckeln ligger öppet i paketet).
 - `web/js/data.js` – laddning/normalisering, PPP/MER-konvertering.
 - `web/js/stl.js` – binär STL-skrivare.
 - `web/js/main.js` – UI + Three.js-scen.
+- `web/js/i18n.js` – strängtabell sv/en (samma mönster som övriga
+  hedin.it-projekt).
 - `scripts/check_geometry.mjs` – bygger testmodeller och kontrollerar
   kantparning (vattentäthet), volymorientering och bbox; skriver
   test-STL:er till `out/`.

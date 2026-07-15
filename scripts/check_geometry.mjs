@@ -6,7 +6,8 @@ import { dirname, join } from "node:path";
 import opentypePkg from "opentype.js";
 const parseFont = opentypePkg.parse;
 import {
-  buildStrip, buildSpiral, buildSquare, buildPlinth, trisToGeometry,
+  buildStrip, buildSpiral, buildSquare, buildPlinth, buildTopPiece,
+  buildTopSegments, buildInlay, trisToGeometry,
 } from "../web/js/geometry.js";
 import { textShapes } from "../web/js/text.js";
 
@@ -107,13 +108,32 @@ function writeSTL(geoms, file) {
 mkdirSync(join(ROOT, "out"), { recursive: true });
 const builders = { remsa: buildStrip, spiral: buildSpiral, kvadrat: buildSquare };
 let fail = 0;
+// huvudmodell utan topp 1 %
+const mainBr = brackets.filter((b) => b.p1 <= 99);
+const topBr = brackets.filter((b) => b.p0 >= 99);
 for (const [name, build] of Object.entries(builders)) {
-  const built = build(brackets, opts);
+  const built = build(mainBr, opts);
   const ts = textShapes(font, "SVERIGE", name === "remsa" ? 5.5 : 9);
   const geoms = [trisToGeometry(built.tris), ...buildPlinth(built.plate, ts.shapes)];
   const r = analyze(name, geoms);
   fail += r.badParts + r.negVol;
   writeSTL(geoms, join(ROOT, "out", `test_SE_${name}.stl`));
 }
+// toppdel: stående + liggande segment (utan höjdklipp)
+const topOpts = { ...opts, clampMm: 0 };
+const tp = buildTopPiece(topBr, topOpts);
+const tpGeoms = [trisToGeometry(tp.tris), ...buildPlinth(tp.plate, null)];
+let r = analyze(`toppdel stående (${Math.round(tp.stats.maxH)} mm)`, tpGeoms);
+fail += r.badParts + r.negVol;
+const segs = buildTopSegments(topBr, topOpts, 240);
+r = analyze(`toppdel ${segs.geoms.length} segment à 240 mm`, segs.geoms);
+fail += r.badParts + r.negVol;
+writeSTL(segs.geoms, join(ROOT, "out", "test_SE_topp_segment.stl"));
+// textinlägg
+const tsIn = textShapes(font, "SVERIGE", 9);
+const inlay = buildInlay(tsIn.shapes);
+r = analyze("textinlägg SVERIGE", inlay);
+fail += r.badParts + r.negVol;
+writeSTL(inlay, join(ROOT, "out", "test_SE_text_inlay.stl"));
 console.log(fail === 0 ? "\nALLT OK" : "\nPROBLEM FUNNA");
 process.exit(fail ? 1 : 0);

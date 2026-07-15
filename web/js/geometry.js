@@ -168,6 +168,91 @@ export function buildSpiral(brackets, opts) {
   };
 }
 
+// ---------- toppdel (utelämnade topp-klasser) ----------
+// Toppdelen visas/skrivs ut med LIKA breda klasser (footprint i procent av
+// längden vore mikroskopisk) men med verklig höjd i samma skala.
+
+export const TOP_BAR_W = 6;      // bredd per klass i toppdelen, mm
+
+function topBoxes(brackets, opts) {
+  // returnerar [{x0,x1,h}] centrerade kring 0
+  const n = brackets.length;
+  const w = TOP_BAR_W;
+  const x0 = -(n * w) / 2;
+  return brackets.map((b, i) => ({
+    x0: x0 + i * w,
+    x1: x0 + (i + 1) * w,
+    h: b.v * opts.scale,
+  }));
+}
+
+// Stående, på egen liten plint – för visning bredvid modellen.
+export function buildTopPiece(brackets, opts) {
+  const boxes = topBoxes(brackets, opts);
+  const out = [];
+  let maxH = 0;
+  for (const b of boxes) {
+    if (b.h <= 0) continue;
+    maxH = Math.max(maxH, b.h);
+    sweptBox(extendPath([[b.x0, 0], [b.x1, 0]], EPS), opts.stripWidth,
+      BASE_TOP - BASE_OVERLAP, BASE_TOP + b.h, out);
+  }
+  const n = Math.max(1, boxes.length);
+  return {
+    tris: out,
+    plate: { kind: "rect", w: n * TOP_BAR_W + 2 * opts.margin, d: opts.stripWidth + 2 * opts.margin },
+    stats: { truncated: 0, maxH },
+  };
+}
+
+// Liggande segment för utskrift: skivor om segLen mm, roterade att ligga
+// på rygg (forna z-axeln längs +y), utlagda sida vid sida med mellanrum.
+// Klasserna är sorterade stigande ⇒ varje skiva är sammanhängande.
+export function buildTopSegments(brackets, opts, segLen) {
+  const boxes = topBoxes(brackets, opts);
+  const maxH = Math.max(0, ...boxes.map((b) => b.h));
+  const nSeg = Math.max(1, Math.ceil(maxH / segLen));
+  const geoms = [];
+  let offX = 0;
+  for (let k = 0; k < nSeg; k++) {
+    const zA = k * segLen, zB = (k + 1) * segLen;
+    const out = [];
+    let minX = Infinity, maxX = -Infinity;
+    for (const b of boxes) {
+      const top = Math.min(b.h, zB);
+      if (top <= zA) continue;
+      minX = Math.min(minX, b.x0); maxX = Math.max(maxX, b.x1);
+      sweptBox(extendPath([[b.x0, 0], [b.x1, 0]], EPS), opts.stripWidth,
+        0, top - zA, out);
+    }
+    if (!out.length) continue;
+    const g = trisToGeometry(out);
+    // lägg på rygg: z → +y, djupet blir tjocklek; ställ på bädden (z=0)
+    g.rotateX(Math.PI / 2);
+    g.translate(offX - minX, 0, opts.stripWidth / 2);
+    geoms.push(g);
+    offX += (maxX - minX) + 6;
+  }
+  return { geoms, nSeg, maxH };
+}
+
+// ---------- textinlägg (för flerfärgstryck) ----------
+// Bokstäverna som egen solid, 0–0,6 mm, i SAMMA koordinater som plattan –
+// jackar i gravyren. Skriv ut med undersidan (z=0) mot bädden.
+
+export const INLAY_H = TEXT_PLATE - BASE_OVERLAP; // = gravyrens djup
+
+export function buildInlay(textShapes) {
+  // Extrudera glyfen direkt (kurvform) – polygoniserad variant gav
+  // oparade kanter för R:s hål. Konturen avviker <0,01 mm från
+  // gravyrhålet (annan kurvsampling), försumbart för utskrift.
+  return textShapes.map((glyph) =>
+    dropDegenerateTris(
+      new THREE.ExtrudeGeometry(glyph, { depth: INLAY_H, bevelEnabled: false })
+    )
+  );
+}
+
 // ---------- plint med graverad text ----------
 
 // Earcut lämnar ibland noll-area-trianglar (hål-bryggor längs t.ex.
