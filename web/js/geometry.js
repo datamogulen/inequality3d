@@ -169,27 +169,46 @@ export function buildSpiral(brackets, opts) {
 }
 
 // ---------- toppdel (utelämnade topp-klasser) ----------
-// Toppdelen visas/skrivs ut med LIKA breda klasser (footprint i procent av
-// längden vore mikroskopisk) men med verklig höjd i samma skala.
+// Två stilar:
+//  "avg"    – EN klump med viktad snitthöjd för hela den utelämnade
+//             gruppen och VERKLIG bas (samma mm per percentil som
+//             modellen; golv 0,8 mm för utskrivbarhet). Standard.
+//  "stairs" – trappa med full detalj upp till sista hundradelen, med
+//             lika breda klasser (verklig bredd vore mikroskopisk).
 
-export const TOP_BAR_W = 4;      // bredd per klass i toppdelen, mm (smal –
-                                 // ska inte se ut som en modell i sig)
+export const TOP_BAR_W = 4;      // bredd per klass i trappstilen, mm
+const MIN_TOP_W = 0.8;           // minsta utskrivbara bastjocklek, mm
 
-function topBoxes(brackets, opts) {
-  // returnerar [{x0,x1,h}] centrerade kring 0
+function topBoxes(brackets, opts, style) {
+  if (style === "avg") {
+    const share = brackets.reduce((s, b) => s + (b.p1 - b.p0), 0);
+    if (share <= 0) return { boxes: [], floored: false, avg: 0 };
+    const avg = brackets.reduce((s, b) => s + b.v * (b.p1 - b.p0), 0) / share;
+    const L = opts.baseSize - 2 * opts.margin;
+    const trueW = (share * L) / 100;
+    const w = Math.max(MIN_TOP_W, trueW);
+    return {
+      boxes: [{ x0: -w / 2, x1: w / 2, h: avg * opts.scale }],
+      floored: trueW < MIN_TOP_W,
+      avg,
+    };
+  }
   const n = brackets.length;
   const w = TOP_BAR_W;
   const x0 = -(n * w) / 2;
-  return brackets.map((b, i) => ({
-    x0: x0 + i * w,
-    x1: x0 + (i + 1) * w,
-    h: b.v * opts.scale,
-  }));
+  return {
+    boxes: brackets.map((b, i) => ({
+      x0: x0 + i * w,
+      x1: x0 + (i + 1) * w,
+      h: b.v * opts.scale,
+    })),
+    floored: false,
+  };
 }
 
 // Stående, på egen liten plint – för visning bredvid modellen.
-export function buildTopPiece(brackets, opts) {
-  const boxes = topBoxes(brackets, opts);
+export function buildTopPiece(brackets, opts, style = "avg") {
+  const { boxes, floored, avg } = topBoxes(brackets, opts, style);
   const out = [];
   let maxH = 0;
   for (const b of boxes) {
@@ -198,19 +217,24 @@ export function buildTopPiece(brackets, opts) {
     sweptBox(extendPath([[b.x0, 0], [b.x1, 0]], EPS), opts.stripWidth,
       BASE_TOP - BASE_OVERLAP, BASE_TOP + b.h, out);
   }
-  const n = Math.max(1, boxes.length);
+  const extent = boxes.length
+    ? boxes[boxes.length - 1].x1 - boxes[0].x0 : TOP_BAR_W;
   return {
     tris: out,
-    plate: { kind: "rect", w: n * TOP_BAR_W + 2 * opts.margin, d: opts.stripWidth + 2 * opts.margin },
-    stats: { truncated: 0, maxH },
+    plate: {
+      kind: "rect",
+      w: Math.max(extent, 8) + 2 * opts.margin,
+      d: opts.stripWidth + 2 * opts.margin,
+    },
+    stats: { truncated: 0, maxH, floored, avg },
   };
 }
 
 // Liggande segment för utskrift: skivor om segLen mm, roterade att ligga
 // på rygg (forna z-axeln längs +y), utlagda sida vid sida med mellanrum.
 // Klasserna är sorterade stigande ⇒ varje skiva är sammanhängande.
-export function buildTopSegments(brackets, opts, segLen) {
-  const boxes = topBoxes(brackets, opts);
+export function buildTopSegments(brackets, opts, segLen, style = "avg") {
+  const { boxes } = topBoxes(brackets, opts, style);
   const maxH = Math.max(0, ...boxes.map((b) => b.h));
   const nSeg = Math.max(1, Math.ceil(maxH / segLen));
   const geoms = [];

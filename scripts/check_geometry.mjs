@@ -119,16 +119,19 @@ for (const [name, build] of Object.entries(builders)) {
   fail += r.badParts + r.negVol;
   writeSTL(geoms, join(ROOT, "out", `test_SE_${name}.stl`));
 }
-// toppdel: stående + liggande segment (utan höjdklipp)
+// toppdel i båda stilarna: stående + liggande segment (utan höjdklipp)
 const topOpts = { ...opts, clampMm: 0 };
-const tp = buildTopPiece(topBr, topOpts);
-const tpGeoms = [trisToGeometry(tp.tris), ...buildPlinth(tp.plate, null)];
-let r = analyze(`toppdel stående (${Math.round(tp.stats.maxH)} mm)`, tpGeoms);
-fail += r.badParts + r.negVol;
-const segs = buildTopSegments(topBr, topOpts, 240);
-r = analyze(`toppdel ${segs.geoms.length} segment à 240 mm`, segs.geoms);
-fail += r.badParts + r.negVol;
-writeSTL(segs.geoms, join(ROOT, "out", "test_SE_topp_segment.stl"));
+let r;
+for (const style of ["avg", "stairs"]) {
+  const tp = buildTopPiece(topBr, topOpts, style);
+  const tpGeoms = [trisToGeometry(tp.tris), ...buildPlinth(tp.plate, null)];
+  r = analyze(`toppdel ${style} stående (${Math.round(tp.stats.maxH)} mm)`, tpGeoms);
+  fail += r.badParts + r.negVol;
+  const segs = buildTopSegments(topBr, topOpts, 240, style);
+  r = analyze(`toppdel ${style} ${segs.geoms.length} segment à 240 mm`, segs.geoms);
+  fail += r.badParts + r.negVol;
+  writeSTL(segs.geoms, join(ROOT, "out", `test_SE_topp_${style}.stl`));
+}
 // textinlägg
 const tsIn = textShapes(font, "SVERIGE", 9);
 const inlay = buildInlay(tsIn.shapes);

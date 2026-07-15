@@ -67,8 +67,12 @@ Sidan är självförsörjande (three.js och opentype.js ligger vendorerade i
   hundradelar 99,9–99,99 + p99,99–100 (118 klasser) från WID.
 - **Toppen utelämnas** (standard: topp 1 % av befolkningen; även
   0,1 %/0,01 % eller inget) så att resten av fördelningen syns – och
-  visas i stället som en **egen toppdel** (en per land, smala lika breda
-  klasser) bredvid landets modeller i verklig höjd. Toppdelen kan exporteras som egen STL i **liggande segment**
+  visas i stället som en **egen toppdel** (en per land) bredvid landets
+  modeller i verklig höjd. Två stilar: **klump** (standard) = hela
+  gruppens viktade snitthöjd på verklig bas i modellens skala (topp 1 %
+  = ~1 mm tunn – "hög pryl med låg bas"; golv 0,8 mm), eller **trappa**
+  = full detalj upp till sista hundradelen med lika breda klasser
+  (meterhög). Toppdelen kan exporteras som egen STL i **liggande segment**
   (valbar längd, standard 240 mm) som limmas ihop för att visa hur hög
   toppen faktiskt är – USA:s topprocent i inkomst är ~2 m vid
   0,5 mm/10 000 USD.

@@ -35,6 +35,7 @@ const state = {
   baseSize: 100,
   clampMm: 0,
   cutTop: 99,      // percentil där toppen utelämnas (0 = av)
+  topStyle: "avg", // "avg" = snittklump med verklig bas, "stairs" = trappa
   showTop: true,   // rita toppdelen bredvid
   segLen: 240,     // segmentlängd för toppdelens STL
 };
@@ -148,7 +149,7 @@ function makeModel(countryData, shape, font) {
   // toppdel för visning (stående)
   let topBuilt = null;
   if (top.length) {
-    topBuilt = buildTopPiece(top, opts);
+    topBuilt = buildTopPiece(top, opts, state.topStyle);
     topBuilt.geoms = [trisToGeometry(topBuilt.tris), ...buildPlinth(topBuilt.plate, null)];
   }
   return { series, built, geoms, inlayGeoms, topBrackets: top, topBuilt };
@@ -181,7 +182,8 @@ function fmtH(mm) {
 const cutLabel = () => CUT_LABEL[String(state.cutTop)]?.[getLang()] ?? "";
 
 function topPieceWidth() {
-  // bredd som toppdelen tar i layouten (grov övre gräns: 19 klasser vid 1 %)
+  // bredd som toppdelen tar i layouten
+  if (state.topStyle === "avg") return 34;
   const n = state.cutTop === 99 ? 19 : state.cutTop === 99.9 ? 10 : 1;
   return n * TOP_BAR_W + 24;
 }
@@ -232,7 +234,8 @@ async function rebuild() {
         group.add(tp);
         const tdiv = document.createElement("div");
         tdiv.className = "model-label";
-        tdiv.innerHTML = `<span class="dim">${t("lbl_toppiece")(cutLabel(), fmtH(topBuilt.stats.maxH))}</span>`;
+        const styleNote = state.topStyle === "avg" ? `, ${t("lbl_avg")}` : "";
+        tdiv.innerHTML = `<span class="dim">${t("lbl_toppiece")(cutLabel() + styleNote, fmtH(topBuilt.stats.maxH))}</span>`;
         const tlabel = new CSS2DObject(tdiv);
         tlabel.position.set(0, -topBuilt.plate.d / 2 - 8, 0);
         tp.add(tlabel);
@@ -314,7 +317,7 @@ function fitCameraIfNeeded() {
 // ---------- export ----------
 
 function exportTop(e) {
-  const { geoms } = buildTopSegments(e.brackets, buildOpts(), state.segLen);
+  const { geoms } = buildTopSegments(e.brackets, buildOpts(), state.segLen, state.topStyle);
   if (geoms.length) exportSTL(geoms, `${e.basename}_${t("file_top")}.stl`);
 }
 
@@ -399,6 +402,7 @@ function syncControls() {
   $("yearHint").textContent = t(state.measure === "carbon" ? "yearHintCarbon" : "yearHint");
   document.querySelectorAll('input[name="shape"]').forEach((c) => (c.checked = state.shapes.includes(c.value)));
   $("cutTop").value = String(state.cutTop);
+  $("topStyle").value = state.topStyle;
   $("showTop").checked = state.showTop;
   const su = SCALE_UNIT[state.measure];
   $("scaleUnit").textContent = t(state.currency === "lcu" && MEASURE_INFO[state.measure].isMoney ? su.lcuLabel : su.label);
@@ -450,6 +454,7 @@ document.querySelectorAll('input[name="shape"]').forEach((c) =>
     rebuild();
   }));
 $("cutTop").addEventListener("change", (e) => { state.cutTop = +e.target.value; rebuild(); });
+$("topStyle").addEventListener("change", (e) => { state.topStyle = e.target.value; rebuild(); });
 $("showTop").addEventListener("change", (e) => { state.showTop = e.target.checked; rebuild(); });
 $("segLen").addEventListener("change", (e) => {
   state.segLen = Math.min(500, Math.max(40, +e.target.value || 240));
