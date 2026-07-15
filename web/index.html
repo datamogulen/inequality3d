@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<title>Ojämlikhet i 3D – inkomst, förmögenhet, CO₂</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #f7f5f0;
+    --panel: #ffffff;
+    --ink: #26241f;
+    --ink-2: #6b675e;
+    --line: #e4e0d6;
+    --accent: #2a78d6;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font: 14px/1.45 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: var(--ink); background: var(--bg);
+    display: flex; overflow: hidden;
+  }
+  #sidebar {
+    width: 320px; min-width: 320px; height: 100%; overflow-y: auto;
+    background: var(--panel); border-right: 1px solid var(--line);
+    padding: 16px 18px 40px;
+  }
+  #sidebar h1 { font-size: 17px; margin: 0 0 2px; }
+  #sidebar .sub { color: var(--ink-2); font-size: 12px; margin: 0 0 14px; }
+  fieldset {
+    border: 1px solid var(--line); border-radius: 8px;
+    margin: 0 0 12px; padding: 8px 12px 10px;
+  }
+  legend { font-weight: 600; font-size: 12.5px; padding: 0 4px; color: var(--ink); }
+  label.row { display: flex; align-items: center; gap: 7px; padding: 2px 0; cursor: pointer; }
+  label.row input { margin: 0; }
+  .swatch { width: 11px; height: 11px; border-radius: 3px; display: inline-block; flex: none; }
+  #countries { max-height: 300px; overflow-y: auto; }
+  .quick { margin: 4px 0 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .quick button, .btn {
+    font: inherit; font-size: 12px; padding: 3px 9px;
+    border: 1px solid var(--line); border-radius: 6px;
+    background: var(--bg); color: var(--ink); cursor: pointer;
+  }
+  .quick button:hover, .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { filter: brightness(1.08); color: #fff; }
+  input[type="number"] {
+    font: inherit; width: 90px; padding: 2px 6px;
+    border: 1px solid var(--line); border-radius: 6px; background: #fff;
+  }
+  input[type="range"] { width: 100%; }
+  select { font: inherit; padding: 2px 6px; border: 1px solid var(--line); border-radius: 6px; background:#fff; }
+  .hint { color: var(--ink-2); font-size: 11.5px; margin: 4px 0 0; }
+  .kv { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 3px 0; }
+  #exports .kv { border-top: 1px dashed var(--line); }
+  #exports .kv:first-child { border-top: none; }
+  #viewport { flex: 1; position: relative; min-width: 0; }
+  #canvas3d { position: absolute; inset: 0; }
+  .model-label {
+    background: rgba(255,255,255,.72); border: 1px solid var(--line);
+    border-radius: 6px; padding: 2px 7px; font-size: 11px; color: var(--ink);
+    white-space: nowrap; pointer-events: none; text-align: center;
+  }
+  .model-label .big { font-weight: 700; font-size: 13px; }
+  .model-label .dim { color: var(--ink-2); font-size: 11px; }
+  #status {
+    position: absolute; left: 12px; bottom: 10px; font-size: 12px;
+    color: var(--ink-2); background: rgba(255,255,255,.8);
+    padding: 3px 9px; border-radius: 6px; border: 1px solid var(--line);
+  }
+  #warn {
+    position: absolute; right: 12px; bottom: 10px; max-width: 420px; font-size: 12px;
+    color: #7a4a00; background: #fff6e6; border: 1px solid #eda100;
+    padding: 4px 10px; border-radius: 6px; display: none;
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "../node_modules/three/build/three.module.js",
+    "three/addons/": "../node_modules/three/examples/jsm/",
+    "opentype.js": "../node_modules/opentype.js/dist/opentype.mjs"
+  }
+}
+</script>
+</head>
+<body>
+  <div id="sidebar">
+    <h1>Ojämlikhet i 3D</h1>
+    <p class="sub">Percentildata från WID.world · för skärm och 3D-utskrift</p>
+
+    <fieldset>
+      <legend>Mått</legend>
+      <label class="row"><input type="radio" name="measure" value="income" checked> Inkomst (pre-tax, per vuxen)</label>
+      <label class="row"><input type="radio" name="measure" value="wealth"> Förmögenhet (netto, per vuxen)</label>
+      <label class="row"><input type="radio" name="measure" value="carbon"> CO₂e-avtryck (per person)</label>
+      <div class="kv" id="currencyRow">
+        <span>Valuta</span>
+        <select id="currency">
+          <option value="ppp">PPP-USD</option>
+          <option value="mer">USD, marknadskurs</option>
+          <option value="lcu">Lokal valuta (ej jämförbart!)</option>
+        </select>
+      </div>
+      <div class="kv">
+        <span>Datakälla</span>
+        <select id="source">
+          <option value="wid">WID.world</option>
+          <option value="pip">Världsbanken PIP</option>
+        </select>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>År: <span id="yearLabel"></span></legend>
+      <input type="range" id="year" min="1990" max="2024" value="2023" step="1">
+      <p class="hint" id="yearHint"></p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Länder</legend>
+      <div class="quick">
+        <button data-set="SE,US,CN,IN">SE·US·CN·IN</button>
+        <button data-set="SE,NO,DK,FI">Norden</button>
+        <button data-set="">Rensa</button>
+      </div>
+      <div id="countries"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Form</legend>
+      <label class="row"><input type="checkbox" name="shape" value="strip" checked> Remsa (percentil-staket)</label>
+      <label class="row"><input type="checkbox" name="shape" value="spiral"> Spiral (rikast i mitten)</label>
+      <label class="row"><input type="checkbox" name="shape" value="square"> Kvadrat (10 × 10 rader)</label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Skala &amp; storlek</legend>
+      <div class="kv"><span id="scaleName">Höjdskala</span>
+        <span><input type="number" id="scale" step="any" min="0"> <span id="scaleUnit"></span></span></div>
+      <div class="quick">
+        <button id="scaleMedian">Median → 3 mm</button>
+        <button id="scaleMax">Högsta → 80 mm</button>
+      </div>
+      <div class="kv"><span>Modellbredd (mm)</span><input type="number" id="baseSize" value="100" min="30" max="256"></div>
+      <div class="kv"><span>Kapa höjd vid (mm, 0 = av)</span><input type="number" id="clampMm" value="0" min="0"></div>
+      <p class="hint">Höjdskalan är gemensam för alla länder – 1 mm motsvarar
+        alltid lika mycket, oavsett land.</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Export (STL för Bambu)</legend>
+      <div id="exports"></div>
+      <div class="quick" style="margin-top:8px">
+        <button class="btn primary" id="exportAll">Exportera alla synliga</button>
+      </div>
+      <p class="hint">Landsnamnet graveras i botten, speglat så att det läses
+        rättvänt underifrån (Open Sans). Kapade staplar plattas av.</p>
+    </fieldset>
+
+    <p class="hint">Källor: inkomst/förmögenhet WID.world (aptinc/ahweal, konstanta
+      priser); CO₂e Chancel (2021) &amp; uppdateringar via WID – konsumtions- och
+      investeringsbaserat avtryck, samma data som Oxfams rapporter bygger på.
+      OBS: WID anger kvaliteten på CO₂-fördelningarna som låg – tolka toppen
+      som storleksordning.</p>
+  </div>
+
+  <div id="viewport">
+    <div id="canvas3d"></div>
+    <div id="status">Laddar …</div>
+    <div id="warn"></div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
