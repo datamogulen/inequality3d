@@ -65,17 +65,15 @@ Sidan är självförsörjande (three.js och opentype.js ligger vendorerade i
     rikaste centilen längst bort till höger.
 - **Toppupplösning**: hela centiler 0–99, tiondelar 99–99,9 och
   hundradelar 99,9–99,99 + p99,99–100 (118 klasser) från WID.
-- **Toppen utelämnas** (standard: topp 1 % av befolkningen; även
-  0,1 %/0,01 % eller inget) så att resten av fördelningen syns – och
-  visas i stället som en **egen toppdel** (en per land) bredvid landets
-  modeller i verklig höjd. Två stilar: **klump** (standard) = hela
-  gruppens viktade snitthöjd på verklig bas i modellens skala (topp 1 %
-  = ~1 mm tunn – "hög pryl med låg bas"; golv 0,8 mm), eller **trappa**
-  = full detalj upp till sista hundradelen med lika breda klasser
-  (meterhög). Toppdelen kan exporteras som egen STL i **liggande segment**
-  (valbar längd, standard 240 mm) som limmas ihop för att visa hur hög
-  toppen faktiskt är – USA:s topprocent i inkomst är ~2 m vid
-  0,5 mm/10 000 USD.
+- **Toppen som viktat snitt** (standard: topp 1 % av befolkningen; även
+  0,1 %/0,01 %, eller full detalj): toppgruppen slås ihop till EN stapel
+  med gruppens viktade snitthöjd, **integrerad i modellen** på sin
+  riktiga plats och med verklig bas (remsans sista 1 % ≈ 0,9 mm tunn,
+  spiralens mittpelare, kvadratens bortre hörn; min 0,8 mm bas för
+  utskrift). USA:s topprocent i inkomst blir då 94 mm i stället för
+  2,1 m (snittet av topp 0,01 %) vid 0,5 mm/10 000 USD – modellen
+  skrivs ut i ett stycke. Full detalj (hundradelar) finns kvar för den
+  som vill se hela dramat.
 - **Kapa höjd** finns också kvar som alternativ (kapade staplar plattas
   av och räknas i etiketten).
 - **STL-export** per modell: mm-skala, plint med landsnamnet graverat

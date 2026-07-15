@@ -3,8 +3,8 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import { loadIndex, loadCountry, getSeries, MEASURE_INFO } from "./data.js";
 import {
-  buildStrip, buildSpiral, buildSquare, buildPlinth, buildTopPiece,
-  buildTopSegments, buildInlay, trisToGeometry, TOP_BAR_W,
+  buildStrip, buildSpiral, buildSquare, buildPlinth, buildInlay,
+  trisToGeometry,
 } from "./geometry.js";
 import { loadFont, textShapes } from "./text.js";
 import { exportSTL } from "./stl.js";
@@ -34,10 +34,7 @@ const state = {
   scales: { income: 0.5 / 10000, wealth: 0.2 / 10000, carbon: 1 }, // mm per USD resp. ton
   baseSize: 100,
   clampMm: 0,
-  cutTop: 99,      // percentil där toppen utelämnas (0 = av)
-  topStyle: "avg", // "avg" = snittklump med verklig bas, "stairs" = trappa
-  showTop: true,   // rita toppdelen bredvid
-  segLen: 240,     // segmentlängd för toppdelens STL
+  cutTop: 99,      // percentil där toppen slås ihop till viktat snitt (0 = av)
 };
 try {
   Object.assign(state, JSON.parse(localStorage.getItem("ineq3d") || "{}"));
@@ -49,7 +46,6 @@ function persist() {
 let index = null;
 let colorByCountry = new Map();
 let currentModels = []; // {code, name, shape, geoms, inlayGeoms, series, group}
-let topExports = [];    // en toppdel per land: {code, name, brackets, maxH, basename}
 
 // ---------- three-scen ----------
 
@@ -121,20 +117,26 @@ function shapeTextSize(shape) {
   return shape === "strip" ? 5.5 : 9;
 }
 
-function splitTop(brackets) {
-  if (!state.cutTop) return { main: brackets, top: [] };
-  return {
-    main: brackets.filter((b) => b.p1 <= state.cutTop),
-    top: brackets.filter((b) => b.p0 >= state.cutTop),
-  };
+// Slår ihop klasserna över tröskeln till EN klass med viktad snitthöjd,
+// på sin verkliga plats och bas i modellen. minLen ger utskrivbar bas
+// (0,8 mm) när den sanna basen blir tunnare än så.
+function mergeTop(brackets, level) {
+  if (!level) return brackets;
+  const main = brackets.filter((b) => b.p1 <= level);
+  const top = brackets.filter((b) => b.p0 >= level);
+  if (!top.length) return brackets;
+  const share = top.reduce((sum, b) => sum + (b.p1 - b.p0), 0);
+  const avg = top.reduce((sum, b) => sum + b.v * (b.p1 - b.p0), 0) / share;
+  main.push({ p0: level, p1: 100, v: avg, merged: true, minLen: 0.8 });
+  return main;
 }
 
 function makeModel(countryData, shape, font) {
   const series = getSeries(countryData, state.source, state.measure, state.year, state.currency);
   if (!series) return null;
   const opts = buildOpts();
-  const { main, top } = splitTop(series.brackets);
-  const built = BUILDERS[shape](main, opts);
+  const merged = mergeTop(series.brackets, state.cutTop);
+  const built = BUILDERS[shape](merged, opts);
 
   // gravyrtext, krymp om den inte får plats
   const name = countryName(countryData).toUpperCase();
@@ -146,13 +148,7 @@ function makeModel(countryData, shape, font) {
 
   const geoms = [trisToGeometry(built.tris), ...buildPlinth(built.plate, ts.shapes)];
   const inlayGeoms = buildInlay(ts.shapes);
-  // toppdel för visning (stående)
-  let topBuilt = null;
-  if (top.length) {
-    topBuilt = buildTopPiece(top, opts, state.topStyle);
-    topBuilt.geoms = [trisToGeometry(topBuilt.tris), ...buildPlinth(topBuilt.plate, null)];
-  }
-  return { series, built, geoms, inlayGeoms, topBrackets: top, topBuilt };
+  return { series, built, geoms, inlayGeoms, merged };
 }
 
 function disposeModels() {
@@ -181,13 +177,6 @@ function fmtH(mm) {
 }
 const cutLabel = () => CUT_LABEL[String(state.cutTop)]?.[getLang()] ?? "";
 
-function topPieceWidth() {
-  // bredd som toppdelen tar i layouten
-  if (state.topStyle === "avg") return 34;
-  const n = state.cutTop === 99 ? 19 : state.cutTop === 99.9 ? 10 : 1;
-  return n * TOP_BAR_W + 24;
-}
-
 async function rebuild() {
   const status = document.getElementById("status");
   status.textContent = t("building");
@@ -196,11 +185,8 @@ async function rebuild() {
   const countryDatas = await Promise.all(state.countries.map(loadCountry));
   disposeModels();
 
-  const showTop = state.showTop && state.cutTop > 0;
-  const gapX = 36 + (showTop ? topPieceWidth() : 0);
-  const gapY = 78;
+  const gapX = 36, gapY = 78;
   const warns = new Set();
-  topExports = [];
   let col = 0;
   for (let ci = 0; ci < state.countries.length; ci++) {
     const cd = countryDatas[ci];
@@ -211,35 +197,13 @@ async function rebuild() {
       const model = makeModel(cd, shape, font);
       if (!model) { warns.add(t("warn_nodata")(cName)); continue; }
       any = true;
-      const { series, built, geoms, inlayGeoms, topBrackets, topBuilt } = model;
+      const { series, built, geoms, inlayGeoms, merged } = model;
       const group = new THREE.Group();
       const mat = new THREE.MeshStandardMaterial({
         color: colorByCountry.get(cd.code), roughness: 0.62, metalness: 0.04,
       });
       const plinthMat = new THREE.MeshStandardMaterial({ color: 0xdad3c2, roughness: 0.8 });
       geoms.forEach((g, i) => group.add(new THREE.Mesh(g, i === 0 ? mat : plinthMat)));
-
-      if (topBuilt && si === 0) {
-        topExports.push({
-          code: cd.code, name: cName, brackets: topBrackets,
-          maxH: topBuilt.stats.maxH,
-          basename: `${cd.code}_${state.source}_${t("file_measure")[state.measure]}_${series.year}`,
-        });
-      }
-      // toppdel bredvid (verklig höjd) – EN per land, vid första formraden
-      if (showTop && topBuilt && si === 0) {
-        const tp = new THREE.Group();
-        topBuilt.geoms.forEach((g, i) => tp.add(new THREE.Mesh(g, i === 0 ? mat : plinthMat)));
-        tp.position.set(state.baseSize / 2 + topBuilt.plate.w / 2 + 14, 0, 0);
-        group.add(tp);
-        const tdiv = document.createElement("div");
-        tdiv.className = "model-label";
-        const styleNote = state.topStyle === "avg" ? `, ${t("lbl_avg")}` : "";
-        tdiv.innerHTML = `<span class="dim">${t("lbl_toppiece")(cutLabel() + styleNote, fmtH(topBuilt.stats.maxH))}</span>`;
-        const tlabel = new CSS2DObject(tdiv);
-        tlabel.position.set(0, -topBuilt.plate.d / 2 - 8, 0);
-        tp.add(tlabel);
-      }
 
       group.position.set(col * (state.baseSize + gapX), si * (state.baseSize + gapY), 0);
       root.add(group);
@@ -248,14 +212,13 @@ async function rebuild() {
       const div = document.createElement("div");
       div.className = "model-label";
       const bits = [];
-      const realMaxMm = built.stats.maxH; // maxhöjd i huvudmodellen (efter ev. klipp)
-      const mainMaxVal = Math.max(0, ...series.brackets.filter((b) => !state.cutTop || b.p1 <= state.cutTop).map((b) => b.v));
-      const uncutMm = mainMaxVal * state.scales[state.measure];
-      bits.push(state.clampMm > 0 && uncutMm > state.clampMm
-        ? `${t("lbl_top")(fmtH(uncutMm))} ${t("lbl_shown")(fmtH(realMaxMm))}`
+      const realMaxMm = built.stats.maxH; // maxhöjd (efter ev. kapning)
+      const fullMm = Math.max(0, ...merged.map((b) => b.v)) * state.scales[state.measure];
+      bits.push(state.clampMm > 0 && fullMm > state.clampMm
+        ? `${t("lbl_top")(fmtH(fullMm))} ${t("lbl_shown")(fmtH(realMaxMm))}`
         : t("lbl_top")(fmtH(realMaxMm)));
       if (built.stats.truncated) bits.push(t("lbl_clamped")(built.stats.truncated));
-      if (state.cutTop) bits.push(t("lbl_cut")(cutLabel()));
+      if (state.cutTop && merged.some((b) => b.merged)) bits.push(t("lbl_merged")(cutLabel()));
       const srcNote = state.source === "pip"
         ? ` · ${t("lbl_pip")(series.welfare === "consumption" ? t("welfare_cons") : t("welfare_inc"))}` : "";
       div.innerHTML = `<span class="big">${cName}</span> <span class="dim">${series.year} · ${t("shape_" + shape)}${srcNote}</span><br>
@@ -267,7 +230,7 @@ async function rebuild() {
       if (series.clampedNeg) warns.add(t("warn_neg")(cName));
       const fm = t("file_measure")[state.measure];
       currentModels.push({
-        code: cd.code, name: cName, shape, geoms, inlayGeoms, topBrackets, topBuilt, series, group,
+        code: cd.code, name: cName, shape, geoms, inlayGeoms, series, merged, group,
         basename: `${cd.code}_${state.source}_${fm}_${series.year}_${t("shape_" + shape)}`,
       });
     }
@@ -289,12 +252,12 @@ async function rebuild() {
 
 let lastFitKey = "";
 function fitCameraIfNeeded() {
-  const key = `${state.countries.join()}|${state.shapes.join()}|${state.baseSize}|${state.showTop && state.cutTop > 0}`;
+  const key = `${state.countries.join()}|${state.shapes.join()}|${state.baseSize}`;
   if (key === lastFitKey || !currentModels.length) return;
   lastFitKey = key;
   // planutbredning i root-lokala koordinater (x åt höger, y = djup)
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  const h = state.baseSize / 2 + 24 + (state.showTop && state.cutTop > 0 ? topPieceWidth() : 0);
+  const h = state.baseSize / 2 + 24;
   for (const m of currentModels) {
     minX = Math.min(minX, m.group.position.x - h);
     maxX = Math.max(maxX, m.group.position.x + h);
@@ -315,11 +278,6 @@ function fitCameraIfNeeded() {
 }
 
 // ---------- export ----------
-
-function exportTop(e) {
-  const { geoms } = buildTopSegments(e.brackets, buildOpts(), state.segLen, state.topStyle);
-  if (geoms.length) exportSTL(geoms, `${e.basename}_${t("file_top")}.stl`);
-}
 
 function renderExports() {
   const el = document.getElementById("exports");
@@ -345,20 +303,6 @@ function renderExports() {
     row.append(lbl, btns);
     el.appendChild(row);
   }
-  // toppdelar – en per land
-  for (const e of topExports) {
-    const row = document.createElement("div");
-    row.className = "kv";
-    const lbl = document.createElement("span");
-    lbl.textContent = `${e.name} · ${t("exp_top")} (${cutLabel()})`;
-    const b = document.createElement("button");
-    b.className = "btn";
-    b.textContent = t("exp_model");
-    b.title = t("exp_top_title")(Math.ceil(e.maxH / state.segLen), fmtH(e.maxH));
-    b.onclick = () => exportTop(e);
-    row.append(lbl, b);
-    el.appendChild(row);
-  }
   if (!currentModels.length) el.innerHTML = `<span class="hint">${t("no_models")}</span>`;
 }
 document.getElementById("exportAll").onclick = () => {
@@ -367,7 +311,6 @@ document.getElementById("exportAll").onclick = () => {
     setTimeout(() => exportSTL(m.geoms, `${m.basename}.stl`), i++ * 400);
     setTimeout(() => exportSTL(m.inlayGeoms, `${m.basename}_${t("file_text")}.stl`), i++ * 400);
   }
-  for (const e of topExports) setTimeout(() => exportTop(e), i++ * 400);
 };
 
 function renderWarnings(warns) {
@@ -402,14 +345,11 @@ function syncControls() {
   $("yearHint").textContent = t(state.measure === "carbon" ? "yearHintCarbon" : "yearHint");
   document.querySelectorAll('input[name="shape"]').forEach((c) => (c.checked = state.shapes.includes(c.value)));
   $("cutTop").value = String(state.cutTop);
-  $("topStyle").value = state.topStyle;
-  $("showTop").checked = state.showTop;
   const su = SCALE_UNIT[state.measure];
   $("scaleUnit").textContent = t(state.currency === "lcu" && MEASURE_INFO[state.measure].isMoney ? su.lcuLabel : su.label);
   $("scale").value = +(state.scales[state.measure] * su.per).toPrecision(4);
   $("baseSize").value = state.baseSize;
   $("clampMm").value = state.clampMm;
-  $("segLen").value = state.segLen;
   renderCountryList();
 }
 
@@ -454,14 +394,6 @@ document.querySelectorAll('input[name="shape"]').forEach((c) =>
     rebuild();
   }));
 $("cutTop").addEventListener("change", (e) => { state.cutTop = +e.target.value; rebuild(); });
-$("topStyle").addEventListener("change", (e) => { state.topStyle = e.target.value; rebuild(); });
-$("showTop").addEventListener("change", (e) => { state.showTop = e.target.checked; rebuild(); });
-$("segLen").addEventListener("change", (e) => {
-  state.segLen = Math.min(500, Math.max(40, +e.target.value || 240));
-  syncControls();
-  renderExports();
-  persist();
-});
 document.querySelectorAll(".quick button[data-set]").forEach((b) =>
   b.addEventListener("click", () => {
     state.countries = b.dataset.set ? b.dataset.set.split(",") : [];
@@ -484,9 +416,9 @@ $("scaleMedian").addEventListener("click", () => {
   rebuild();
 });
 $("scaleMax").addEventListener("click", () => {
-  // "Högsta" = högsta klass i det som visas i huvudmodellen (efter topputelämning)
+  // "Högsta" = högsta klass som visas (inkl. ev. ihopslagen topp)
   const maxs = currentModels.map((m) =>
-    Math.max(0, ...m.series.brackets.filter((b) => !state.cutTop || b.p1 <= state.cutTop).map((b) => b.v))
+    Math.max(0, ...m.merged.map((b) => b.v))
   ).filter((v) => v > 0);
   if (!maxs.length) return;
   state.scales[state.measure] = 80 / Math.max(...maxs);

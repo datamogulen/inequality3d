@@ -158,22 +158,14 @@
     <fieldset>
       <legend data-i18n="fs_top">Toppen</legend>
       <div class="kv">
-        <span data-i18n="top_skip">Utelämna</span>
+        <span data-i18n="top_skip">Toppen som</span>
         <select id="cutTop">
-          <option value="0" data-i18n="top_none">Inget – visa allt</option>
-          <option value="99" data-i18n="top_1">topp 1 %</option>
-          <option value="99.9" data-i18n="top_01">topp 0,1 %</option>
-          <option value="99.99" data-i18n="top_001">topp 0,01 %</option>
+          <option value="99" data-i18n="top_1">viktat snitt över topp 1 %</option>
+          <option value="99.9" data-i18n="top_01">snitt över topp 0,1 %</option>
+          <option value="99.99" data-i18n="top_001">snitt över topp 0,01 %</option>
+          <option value="0" data-i18n="top_none">full detalj (hundradelar)</option>
         </select>
       </div>
-      <div class="kv">
-        <span data-i18n="top_style">Toppdel som</span>
-        <select id="topStyle">
-          <option value="avg" data-i18n="top_avg">klump: viktad snitthöjd, verklig bas</option>
-          <option value="stairs" data-i18n="top_stairs">trappa: full detalj, lika breda klasser</option>
-        </select>
-      </div>
-      <label class="row"><input type="checkbox" id="showTop" checked> <span data-i18n="top_show">Visa toppdelen bredvid, i verklig höjd</span></label>
       <p class="hint" data-i18n="top_hint"></p>
     </fieldset>
 
@@ -192,7 +184,6 @@
 
     <fieldset>
       <legend data-i18n="fs_export">Export (STL för Bambu)</legend>
-      <div class="kv"><span data-i18n="seg_len">Toppdelens segmentlängd (mm)</span><input type="number" id="segLen" value="240" min="40" max="500"></div>
       <div id="exports"></div>
       <div class="quick" style="margin-top:8px">
         <button class="btn primary" id="exportAll" data-i18n="btn_exportAll">Exportera alla synliga</button>

@@ -6,8 +6,8 @@ import { dirname, join } from "node:path";
 import opentypePkg from "opentype.js";
 const parseFont = opentypePkg.parse;
 import {
-  buildStrip, buildSpiral, buildSquare, buildPlinth, buildTopPiece,
-  buildTopSegments, buildInlay, trisToGeometry,
+  buildStrip, buildSpiral, buildSquare, buildPlinth, buildInlay,
+  trisToGeometry,
 } from "../web/js/geometry.js";
 import { textShapes } from "../web/js/text.js";
 
@@ -108,35 +108,26 @@ function writeSTL(geoms, file) {
 mkdirSync(join(ROOT, "out"), { recursive: true });
 const builders = { remsa: buildStrip, spiral: buildSpiral, kvadrat: buildSquare };
 let fail = 0;
-// huvudmodell utan topp 1 %
+// modell med topp 1 % ihopslagen till viktat snitt (som appen gör)
 const mainBr = brackets.filter((b) => b.p1 <= 99);
 const topBr = brackets.filter((b) => b.p0 >= 99);
+const share = topBr.reduce((sum, b) => sum + (b.p1 - b.p0), 0);
+const avg = topBr.reduce((sum, b) => sum + b.v * (b.p1 - b.p0), 0) / share;
+const mergedBr = [...mainBr, { p0: 99, p1: 100, v: avg, merged: true, minLen: 0.8 }];
+console.log(`snitt topp 1 %: ${Math.round(avg)} USD → ${(avg * opts.scale).toFixed(1)} mm`);
 for (const [name, build] of Object.entries(builders)) {
-  const built = build(mainBr, opts);
+  const built = build(mergedBr, opts);
   const ts = textShapes(font, "SVERIGE", name === "remsa" ? 5.5 : 9);
   const geoms = [trisToGeometry(built.tris), ...buildPlinth(built.plate, ts.shapes)];
   const r = analyze(name, geoms);
   fail += r.badParts + r.negVol;
   writeSTL(geoms, join(ROOT, "out", `test_SE_${name}.stl`));
 }
-// toppdel i båda stilarna: stående + liggande segment (utan höjdklipp)
-const topOpts = { ...opts, clampMm: 0 };
-let r;
-for (const style of ["avg", "stairs"]) {
-  const tp = buildTopPiece(topBr, topOpts, style);
-  const tpGeoms = [trisToGeometry(tp.tris), ...buildPlinth(tp.plate, null)];
-  r = analyze(`toppdel ${style} stående (${Math.round(tp.stats.maxH)} mm)`, tpGeoms);
-  fail += r.badParts + r.negVol;
-  const segs = buildTopSegments(topBr, topOpts, 240, style);
-  r = analyze(`toppdel ${style} ${segs.geoms.length} segment à 240 mm`, segs.geoms);
-  fail += r.badParts + r.negVol;
-  writeSTL(segs.geoms, join(ROOT, "out", `test_SE_topp_${style}.stl`));
-}
 // textinlägg
 const tsIn = textShapes(font, "SVERIGE", 9);
 const inlay = buildInlay(tsIn.shapes);
-r = analyze("textinlägg SVERIGE", inlay);
-fail += r.badParts + r.negVol;
+const rInlay = analyze("textinlägg SVERIGE", inlay);
+fail += rInlay.badParts + rInlay.negVol;
 writeSTL(inlay, join(ROOT, "out", "test_SE_text_inlay.stl"));
 console.log(fail === 0 ? "\nALLT OK" : "\nPROBLEM FUNNA");
 process.exit(fail ? 1 : 0);
