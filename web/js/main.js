@@ -47,7 +47,8 @@ function persist() {
 
 let index = null;
 let colorByCountry = new Map();
-let currentModels = []; // {code, name, shape, geoms, inlayGeoms, topSegBrackets, series, group}
+let currentModels = []; // {code, name, shape, geoms, inlayGeoms, series, group}
+let topExports = [];    // en toppdel per land: {code, name, brackets, maxH, basename}
 
 // ---------- three-scen ----------
 
@@ -197,6 +198,7 @@ async function rebuild() {
   const gapX = 36 + (showTop ? topPieceWidth() : 0);
   const gapY = 78;
   const warns = new Set();
+  topExports = [];
   let col = 0;
   for (let ci = 0; ci < state.countries.length; ci++) {
     const cd = countryDatas[ci];
@@ -215,8 +217,15 @@ async function rebuild() {
       const plinthMat = new THREE.MeshStandardMaterial({ color: 0xdad3c2, roughness: 0.8 });
       geoms.forEach((g, i) => group.add(new THREE.Mesh(g, i === 0 ? mat : plinthMat)));
 
-      // toppdel bredvid (verklig höjd)
-      if (showTop && topBuilt) {
+      if (topBuilt && si === 0) {
+        topExports.push({
+          code: cd.code, name: cName, brackets: topBrackets,
+          maxH: topBuilt.stats.maxH,
+          basename: `${cd.code}_${state.source}_${t("file_measure")[state.measure]}_${series.year}`,
+        });
+      }
+      // toppdel bredvid (verklig höjd) – EN per land, vid första formraden
+      if (showTop && topBuilt && si === 0) {
         const tp = new THREE.Group();
         topBuilt.geoms.forEach((g, i) => tp.add(new THREE.Mesh(g, i === 0 ? mat : plinthMat)));
         tp.position.set(state.baseSize / 2 + topBuilt.plate.w / 2 + 14, 0, 0);
@@ -304,9 +313,9 @@ function fitCameraIfNeeded() {
 
 // ---------- export ----------
 
-function exportTop(m) {
-  const { geoms } = buildTopSegments(m.topBrackets, buildOpts(), state.segLen);
-  if (geoms.length) exportSTL(geoms, `${m.basename}_${t("file_top")}.stl`);
+function exportTop(e) {
+  const { geoms } = buildTopSegments(e.brackets, buildOpts(), state.segLen);
+  if (geoms.length) exportSTL(geoms, `${e.basename}_${t("file_top")}.stl`);
 }
 
 function renderExports() {
@@ -330,11 +339,21 @@ function renderExports() {
     };
     mk(t("exp_model"), () => exportSTL(m.geoms, `${m.basename}.stl`));
     mk(t("exp_inlay"), () => exportSTL(m.inlayGeoms, `${m.basename}_${t("file_text")}.stl`));
-    if (m.topBrackets.length && m.topBuilt) {
-      const n = Math.ceil(m.topBuilt.stats.maxH / state.segLen);
-      mk(t("exp_top"), () => exportTop(m), t("exp_top_title")(n, fmtH(m.topBuilt.stats.maxH)));
-    }
     row.append(lbl, btns);
+    el.appendChild(row);
+  }
+  // toppdelar – en per land
+  for (const e of topExports) {
+    const row = document.createElement("div");
+    row.className = "kv";
+    const lbl = document.createElement("span");
+    lbl.textContent = `${e.name} · ${t("exp_top")} (${cutLabel()})`;
+    const b = document.createElement("button");
+    b.className = "btn";
+    b.textContent = t("exp_model");
+    b.title = t("exp_top_title")(Math.ceil(e.maxH / state.segLen), fmtH(e.maxH));
+    b.onclick = () => exportTop(e);
+    row.append(lbl, b);
     el.appendChild(row);
   }
   if (!currentModels.length) el.innerHTML = `<span class="hint">${t("no_models")}</span>`;
@@ -344,8 +363,8 @@ document.getElementById("exportAll").onclick = () => {
   for (const m of currentModels) {
     setTimeout(() => exportSTL(m.geoms, `${m.basename}.stl`), i++ * 400);
     setTimeout(() => exportSTL(m.inlayGeoms, `${m.basename}_${t("file_text")}.stl`), i++ * 400);
-    if (m.topBrackets.length) setTimeout(() => exportTop(m), i++ * 400);
   }
+  for (const e of topExports) setTimeout(() => exportTop(e), i++ * 400);
 };
 
 function renderWarnings(warns) {

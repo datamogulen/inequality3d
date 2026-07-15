@@ -65,10 +65,10 @@ Sidan är självförsörjande (three.js och opentype.js ligger vendorerade i
     rikaste centilen längst bort till höger.
 - **Toppupplösning**: hela centiler 0–99, tiondelar 99–99,9 och
   hundradelar 99,9–99,99 + p99,99–100 (118 klasser) från WID.
-- **Toppen utelämnas** (standard: topp 1 %; även 0,1 %/0,01 % eller
-  inget) så att resten av fördelningen syns – och visas i stället som en
-  **egen toppdel** bredvid modellen i verklig höjd, med lika breda
-  klasser. Toppdelen kan exporteras som egen STL i **liggande segment**
+- **Toppen utelämnas** (standard: topp 1 % av befolkningen; även
+  0,1 %/0,01 % eller inget) så att resten av fördelningen syns – och
+  visas i stället som en **egen toppdel** (en per land, smala lika breda
+  klasser) bredvid landets modeller i verklig höjd. Toppdelen kan exporteras som egen STL i **liggande segment**
   (valbar längd, standard 240 mm) som limmas ihop för att visa hur hög
   toppen faktiskt är – USA:s topprocent i inkomst är ~2 m vid
   0,5 mm/10 000 USD.

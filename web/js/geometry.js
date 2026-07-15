@@ -172,7 +172,8 @@ export function buildSpiral(brackets, opts) {
 // Toppdelen visas/skrivs ut med LIKA breda klasser (footprint i procent av
 // längden vore mikroskopisk) men med verklig höjd i samma skala.
 
-export const TOP_BAR_W = 6;      // bredd per klass i toppdelen, mm
+export const TOP_BAR_W = 4;      // bredd per klass i toppdelen, mm (smal –
+                                 // ska inte se ut som en modell i sig)
 
 function topBoxes(brackets, opts) {
   // returnerar [{x0,x1,h}] centrerade kring 0
