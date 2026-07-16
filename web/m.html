@@ -71,6 +71,7 @@
 
 <script type="module">
 const P = new URLSearchParams(location.search);
+const ABOUT = !P.has("c") && !P.has("m"); // utan parametrar: om-sida för hela projektet
 const CODE = (P.get("c") || "SE").toUpperCase().slice(0, 2);
 const M = { inc: "income", wea: "wealth", co2: "carbon" }[P.get("m") || "inc"] || "income";
 let LANG = P.get("lang") || localStorage.getItem("ineq3d_lang") ||
@@ -161,6 +162,39 @@ percentilfördelning, och kan därför inte driva modellerna här.</p>`],
     srcH: "Källor & läs mer",
     appLink: "← Till den interaktiva 3D-modellen (hedin.it/inequality3d)",
     langBtn: "English",
+    about: {
+      title: "Om Ojämlikhet i 3D",
+      sub: "ett interaktivt jämförelseverktyg för ekonomisk och klimatmässig ojämlikhet",
+      body: (lang) => `
+<h2>Vad är det här?</h2>
+<p>Ett verktyg som visar hur inkomster, förmögenheter och växthusgasavtryck fördelar sig
+<i>percentil för percentil</i> – inom och mellan världens länder, från 1990 till idag.
+Fördelningarna visas som 3D-modeller som kan vridas, staplas och jämföras direkt i
+webbläsaren – och laddas ner som STL-filer och skrivas ut på en 3D-skrivare, med landets
+namn, skalan och en QR-kod till en informationssida ingraverade på undersidan. Höjdskalan
+är fast per mått, så utskrivna modeller från olika länder och år är direkt jämförbara.</p>
+<h2>De tre måtten</h2>
+<p><b>Inkomst</b> – nationalinkomst före skatt per vuxen (inklusive kapitalinkomster).
+<a href="m.html?m=inc&lang=${lang}">Metod &amp; vanliga frågor →</a></p>
+<p><b>Förmögenhet</b> – nettoförmögenhet per vuxen; skulder kan visas som eget rött lager.
+<a href="m.html?m=wea&lang=${lang}">Metod &amp; vanliga frågor →</a></p>
+<p><b>CO₂e-avtryck</b> – konsumtionsbaserat växthusgasavtryck per person, uppdelat i tre
+utskrivbara lager: privat konsumtion, offentlig konsumtion och investeringar (fördelade
+efter förmögenhet – den som äger kapitalet bär dess utsläpp).
+<a href="m.html?m=co2&lang=${lang}">Metod &amp; vanliga frågor →</a></p>
+<h2>Data</h2>
+<p>All data kommer från <a href="https://wid.world/">World Inequality Database
+(WID.world)</a>; koldioxidfördelningarna är Lucas Chancels (till och med 2019).
+Världsfördelningen för CO₂ aggregeras ur ~170 länders percentiler viktade med befolkning.
+Penningvärden anges i PPP-USD i fasta priser, så animeringen över åren visar real
+utveckling. WID kvalitetsmärker sina länderserier – länder med lägre datakvalitet ligger
+bakom valet ”Fler länder” i appen.</p>
+<h2>Vem ligger bakom?</h2>
+<p>Verktyget är byggt av AI-assistenten Claude utifrån en enda prompt (och därefter
+iterationer) av <a href="https://hedin.it/">Björn Hedin</a>, forskare vid KTH. Koden är
+öppen källkod: <a href="https://github.com/datamogulen/inequality3d">github.com/datamogulen/inequality3d</a>
+(ursprungsprompten citeras i README). Fritt att använda och dela.</p>`,
+    },
     method: {
       income: `<h2>Vad modellen visar</h2>
 <p>Varje stapel är genomsnittsinkomsten i en percentil av den vuxna befolkningen,
@@ -313,6 +347,41 @@ here.</p>`],
     srcH: "Sources & further reading",
     appLink: "← To the interactive 3D model (hedin.it/inequality3d)",
     langBtn: "Svenska",
+    about: {
+      title: "About Inequality in 3D",
+      sub: "an interactive comparison tool for economic and climate inequality",
+      body: (lang) => `
+<h2>What is this?</h2>
+<p>A tool that shows how income, wealth and greenhouse-gas footprints are distributed
+<i>percentile by percentile</i> – within and between the world's countries, from 1990 to
+today. The distributions are shown as 3D models that can be rotated, stacked and compared
+in the browser – and downloaded as STL files and printed on a 3D printer, with the
+country's name, the scale and a QR code linking to an information page engraved
+underneath. The height scale is fixed per measure, so printed models from different
+countries and years compare directly.</p>
+<h2>The three measures</h2>
+<p><b>Income</b> – pre-tax national income per adult (including capital income).
+<a href="m.html?m=inc&lang=${lang}">Method &amp; FAQ →</a></p>
+<p><b>Wealth</b> – net wealth per adult; debt can be shown as its own red layer.
+<a href="m.html?m=wea&lang=${lang}">Method &amp; FAQ →</a></p>
+<p><b>CO₂e footprint</b> – consumption-based greenhouse-gas footprint per person, split
+into three printable layers: private consumption, public consumption and investments
+(allocated by wealth – whoever owns the capital carries its emissions).
+<a href="m.html?m=co2&lang=${lang}">Method &amp; FAQ →</a></p>
+<h2>Data</h2>
+<p>All data come from the <a href="https://wid.world/">World Inequality Database
+(WID.world)</a>; the carbon distributions are Lucas Chancel's (through 2019). The world
+CO₂ distribution is aggregated from ~170 countries' percentiles weighted by population.
+Money is expressed in PPP USD at constant prices, so animating over the years shows real
+change. WID rates the quality of its country series – countries with lower data quality
+sit behind the “More countries” option in the app.</p>
+<h2>Who is behind it?</h2>
+<p>The tool was built by the AI assistant Claude from a single prompt (and subsequent
+iterations) by <a href="https://hedin.it/">Björn Hedin</a>, researcher at KTH Royal
+Institute of Technology. The code is open source:
+<a href="https://github.com/datamogulen/inequality3d">github.com/datamogulen/inequality3d</a>
+(the original prompt is quoted in the README). Free to use and share.</p>`,
+    },
     method: {
       income: `<h2>What the model shows</h2>
 <p>Each bar is the average income of one percentile of the adult population, sorted from
@@ -416,6 +485,23 @@ async function render() {
   $("appLink").textContent = tr.appLink;
   $("appLink").href = "./?lang=" + LANG;
   $("srcH").textContent = tr.srcH;
+
+  if (ABOUT) { // om-sida för hela projektet: ingen landsdata, samlade källor
+    document.title = tr.about.title + " – Inequality in 3D";
+    $("title").textContent = tr.about.title;
+    $("subtitle").textContent = tr.about.sub;
+    $("method").innerHTML = tr.about.body(LANG);
+    const seen = new Set(), all = [];
+    for (const key of ["income", "wealth", "carbon"]) {
+      for (const [u, l] of tr.sources[key]) if (!seen.has(u)) { seen.add(u); all.push([u, l]); }
+    }
+    $("sources").innerHTML = all.map(([u, l]) => `<li><a href="${u}">${l}</a></li>`).join("");
+    $("statsCard").style.display = "none";
+    $("compCard").style.display = "none";
+    $("faqCard").style.display = "none";
+    return;
+  }
+
   $("sources").innerHTML = tr.sources[M].map(([u, l]) => `<li><a href="${u}">${l}</a></li>`).join("");
   $("method").innerHTML = tr.method[M];
   const faqItems = (tr.faq && tr.faq[M]) || [];

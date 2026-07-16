@@ -818,6 +818,7 @@ function syncControls() {
   $("qr").checked = state.qr;
   $("stack").checked = state.stack;
   $("moreCountries").checked = state.more;
+  $("aboutLink").href = `m.html?lang=${getLang()}`;
   $("moreLink").href = `m.html?c=${state.countries[0] || "SE"}&m=${M_SHORT[state.measure]}&lang=${getLang()}`;
   $("scaleUnit").textContent = t("scale_per_mm") + " " + (state.measure === "carbon" ? "tCO₂e" : "USD");
   $("scale").value = fmtScaleInput();
