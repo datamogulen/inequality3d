@@ -27,6 +27,9 @@
   .pill { display:inline-block; background:var(--bg); border:1px solid var(--line);
           border-radius: 999px; padding: 1px 10px; font-size: 13px; margin: 0 4px 4px 0; }
   .note { font-size: 14px; color: var(--ink2); }
+  details { margin: 10px 0; border-bottom: 1px dashed var(--line); padding-bottom: 8px; }
+  summary { cursor: pointer; font-weight: 600; }
+  details > div { padding: 8px 0 2px; }
   #err { color: #a33; }
 </style>
 </head>
@@ -52,6 +55,11 @@
   </div>
 
   <div id="method"></div>
+
+  <div class="card" id="faqCard" style="display:none">
+    <h2 id="faqH" style="margin-top:0"></h2>
+    <div id="faq"></div>
+  </div>
 
   <div class="card">
     <h2 id="srcH" style="margin-top:0"></h2>
@@ -82,6 +90,56 @@ const T = {
     compH: (y) => `Avtryckets tre delar ${y} (medel, ton CO₂e/person)`,
     compRows: { gov: "Offentlig konsumtion", cons: "Privat konsumtion", inv: "Investeringar (kapitalägande)" },
     compNote: "I appen kan de tre delarna skrivas ut som lager i olika färger. Offentlig konsumtion fördelas lika per person i Chancels huvudscenario; Oxfam/SEI fördelar i stället hela nationens konsumtionsutsläpp proportionellt mot inkomst.",
+    faqH: "Fördjupning – vanliga frågor",
+    faq: {
+      carbon: [
+        ["Dubbelräknas inte investeringarna? Fabriken gör ju varor som konsumeras senare",
+         `<p>Nej. Bokföringen görs år för år: varje års faktiska utsläpp delas upp exakt en
+gång mellan privat konsumtion, offentlig konsumtion och investeringar. När fabriken byggs
+2019 hamnar byggutsläppen (cement, stål, byggenergi) i <i>investeringar 2019</i>. När
+fabriken 2024 tillverkar skor bäddas <i>driftårets</i> utsläpp (el, material, transporter)
+in i skornas avtryck – men ingen andel av själva fabriksbygget. Kapitalbildning är en
+slutanvändning i nationalräkenskaperna, inte en insatsvara som skrivs av in i framtida
+produkter. Som Chancel uttrycker det: samma ton koldioxid kan aldrig tillskrivas två olika
+aktörer – i kontrast till livscykelanalyser, där dubbelräkningsproblemet är ständigt
+närvarande.</p>
+<p>Det finns en alternativ bokföring (”kapitalendogenisering”) där fabriksbygget i stället
+skrivs av in i produkternas avtryck över kapitalets livslängd – men då måste
+investeringskategorin strykas, annars blir det just dubbelräkning. De två synsätten är
+varsin konsistent bokföring som inte får blandas.</p>`],
+        ["Ingår vägen, lastbilen och järnvägen i en varas avtryck?",
+         `<p>Nej – infrastruktur och fordon är investeringar (det år de byggs eller köps).
+I varans konsumtionsavtryck ingår bara driften:</p>
+<table>
+<tr><td>Vägens/järnvägens/flygplatsens bygge</td><td>investeringar</td></tr>
+<tr><td>Offentligt väg-/banunderhåll</td><td>offentlig konsumtion</td></tr>
+<tr><td>Lastbilens/tågets/flygplanets tillverkning</td><td>investeringar</td></tr>
+<tr><td>Diesel, driftsel, jetbränsle, fordonsservice (företags)</td><td>varans avtryck</td></tr>
+</table>
+<p>Två lurigheter: hushållens <i>privatbilar</i> räknas som konsumtion – tillverkningen
+hamnar i köparens avtryck köpåret – medan åkeriets identiska lastbil är en investering;
+gränsen går vid vem som köper, inte vad. Och <i>bostadsbyggen</i> är alltid investeringar,
+även privatpersoners. Konsekvensen är att investeringar är den största enskilda
+utsläppskategorin i Sverige (cirka 27 % år 2023 enligt Naturvårdsverket) – det violetta
+lagret i modellen är bokstavligen vägarna, fabrikerna och bostäderna, tillskrivna
+kapitalägarna.</p>`],
+        ["Kan USA verkligen ha högre offentlig CO₂ per person än Sverige?",
+         `<p>Ja – 2,8 mot 1,7 ton per person 2019 (WID:s egna aggregat). Sverige har större
+offentlig sektor som <i>andel av BNP</i> (~26 % mot ~14 %), men USA:s BNP per person är
+högre, så absolutbeloppen per person är likartade – och framför allt är
+<i>utsläppsintensiteten</i> per offentligt spenderad dollar mycket högre i USA: fossil
+elmix, världens största militärapparat och kolintensivare leveranskedjor. Svensk offentlig
+konsumtion är tjänstetung (löner till lärare och vårdpersonal) på nästan fossilfri el.</p>`],
+        ["Varför skiljer sig siffrorna från t.ex. Naturvårdsverkets?",
+         `<p>Kategorierna är desamma – hushåll, offentlig konsumtion och investeringar följer
+nationalräkenskapernas snitt i båda – men modellerna skiljer sig: WID bygger på Global
+Carbon Projects/EORA:s input-output-tabeller, Naturvårdsverket/SCB på PRINCE-modellen,
+med olika gränsdragningar (Naturvårdsverket missar t.ex. höghöjdseffekten av flyg). För
+Sverige 2019: Naturvårdsverket 8,7 ton, WID 9,5 ton totalt – samma storleksordning och
+samma nedåtgående trend. Naturvårdsverket har data till 2023, men bara som rikssnitt utan
+percentilfördelning, och kan därför inte driva modellerna här.</p>`],
+      ],
+    },
     srcH: "Källor & läs mer",
     appLink: "← Till den interaktiva 3D-modellen (hedin.it/inequality3d)",
     langBtn: "English",
@@ -156,6 +214,57 @@ storleksordning snarare än exakt värde. I 3D-utskriften är skalan fast
     compH: (y) => `The three components of the footprint ${y} (mean, tonnes CO₂e/person)`,
     compRows: { gov: "Public consumption", cons: "Private consumption", inv: "Investments (capital ownership)" },
     compNote: "In the app the three components can be printed as layers in different colours. Public consumption is split equally per person in Chancel's benchmark; Oxfam/SEI instead allocate the nation's entire consumption emissions in proportion to income.",
+    faqH: "Deep dive – common questions",
+    faq: {
+      carbon: [
+        ["Isn't investment double-counted? The factory makes goods that are consumed later",
+         `<p>No. The accounting is done year by year: each year's actual emissions are
+partitioned exactly once between private consumption, public consumption and investments.
+When the factory is built in 2019, the construction emissions (cement, steel, energy) land
+in <i>investments 2019</i>. When the factory makes shoes in 2024, the <i>operating</i>
+emissions of that year (electricity, materials, transport) are embodied in the shoes'
+footprint – but no share of the factory build itself. Capital formation is final demand in
+the national accounts, not an input amortised into future products. As Chancel puts it:
+the same tonne of carbon can never be attributed to two different agents – in contrast to
+life-cycle analysis, where the double-counting problem is ever-present.</p>
+<p>There is an alternative convention ("capital endogenisation") where the factory build is
+instead amortised into product footprints over the capital's lifetime – but then the
+investment category must be dropped, or you would indeed double-count. The two conventions
+are each internally consistent and must not be mixed.</p>`],
+        ["Are the road, the truck and the railway included in a product's footprint?",
+         `<p>No – infrastructure and vehicles are investments (in the year they are built or
+bought). A product's consumption footprint only carries the operations:</p>
+<table>
+<tr><td>Building the road/railway/airport</td><td>investments</td></tr>
+<tr><td>Public road/rail maintenance</td><td>public consumption</td></tr>
+<tr><td>Manufacturing the truck/train/aircraft</td><td>investments</td></tr>
+<tr><td>Diesel, traction power, jet fuel, fleet servicing (by firms)</td><td>the product's footprint</td></tr>
+</table>
+<p>Two subtleties: households' <i>private cars</i> count as consumption – manufacturing
+lands in the buyer's footprint in the purchase year – while a haulier's identical truck is
+an investment; the line is drawn by who buys, not what. And <i>housing construction</i> is
+always investment, even for private individuals. The consequence: investments are the
+single largest emissions category in Sweden (about 27% in 2023 according to the Swedish
+EPA) – the violet layer in the model is literally the roads, factories and homes,
+attributed to the owners of capital.</p>`],
+        ["Can the US really have higher public-consumption CO₂ per person than Sweden?",
+         `<p>Yes – 2.8 vs 1.7 tonnes per person in 2019 (WID's own aggregates). Sweden has a
+larger public sector as a <i>share of GDP</i> (~26% vs ~14%), but US GDP per person is
+higher, so absolute amounts per person are similar – and above all the <i>carbon
+intensity</i> per public dollar is much higher in the US: a fossil-heavy grid, the world's
+largest military and more carbon-intensive supply chains. Swedish public consumption is
+service-heavy (salaries for teachers and nurses) on near-zero-carbon electricity.</p>`],
+        ["Why do the numbers differ from e.g. the Swedish EPA's?",
+         `<p>The categories are the same – households, public consumption and investments
+follow the national-accounts split in both – but the models differ: WID builds on the
+Global Carbon Project/EORA input-output tables, the Swedish EPA/Statistics Sweden on the
+PRINCE model, with different boundaries (the Swedish EPA misses e.g. the high-altitude
+effect of aviation). For Sweden 2019: Swedish EPA 8.7 tonnes, WID 9.5 tonnes in total –
+same order of magnitude and the same downward trend. The Swedish EPA has data to 2023, but
+only as national averages without percentile distributions, so it cannot drive the models
+here.</p>`],
+      ],
+    },
     srcH: "Sources & further reading",
     appLink: "← To the interactive 3D model (hedin.it/inequality3d)",
     langBtn: "Svenska",
@@ -256,6 +365,15 @@ async function render() {
   $("srcH").textContent = tr.srcH;
   $("sources").innerHTML = tr.sources[M].map(([u, l]) => `<li><a href="${u}">${l}</a></li>`).join("");
   $("method").innerHTML = tr.method[M];
+  const faqItems = (tr.faq && tr.faq[M]) || [];
+  if (faqItems.length) {
+    $("faqH").textContent = tr.faqH;
+    $("faq").innerHTML = faqItems.map(([q, a]) =>
+      `<details><summary>${q}</summary><div>${a}</div></details>`).join("");
+    $("faqCard").style.display = "block";
+  } else {
+    $("faqCard").style.display = "none";
+  }
   document.title = tr.title[M] + " – Inequality in 3D";
 
   let idx, cd;

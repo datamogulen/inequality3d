@@ -571,6 +571,7 @@ function syncControls() {
   $("cutTop").value = String(state.cutTop);
   $("deciles").checked = state.deciles;
   $("qr").checked = state.qr;
+  $("moreLink").href = `m.html?c=${state.countries[0] || "SE"}&m=${M_SHORT[state.measure]}&lang=${getLang()}`;
   $("scaleUnit").textContent = t("scale_per_mm") + " " + (state.measure === "carbon" ? "tCO₂e" : (state.currency === "lcu" ? t("lcu_short") : "USD"));
   $("scale").value = fmtScaleInput();
   $("baseSize").value = state.baseSize;
