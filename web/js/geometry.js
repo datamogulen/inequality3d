@@ -149,6 +149,7 @@ function coverageAtX(polys, x) {
 // mellanrum så att varje percentil behåller sin fulla databredd.
 // Returnerar { parts: {namn: tris[]}, plate, stats }.
 export function buildStrip(brackets, opts) {
+  const B = opts.baseTop ?? BASE_TOP; // tunn platta i webbvyn, full i STL
   const L = opts.length, W = opts.depth;
   const x0 = -L / 2, y0 = -W / 2, y1 = W / 2;
   const grooves = opts.grooves !== false;
@@ -181,7 +182,7 @@ export function buildStrip(brackets, opts) {
   const parts = {};
   const arr = (k) => (parts[k] ??= []);
   const mean = opts.meanH != null
-    ? { z0: BASE_TOP + opts.meanH - MEAN_T / 2, z1: BASE_TOP + opts.meanH + MEAN_T / 2 }
+    ? { z0: B + opts.meanH - MEAN_T / 2, z1: B + opts.meanH + MEAN_T / 2 }
     : null;
 
   const put = (part, xa, xb, ya, yb, za, zb, allowMean = true) => {
@@ -197,10 +198,10 @@ export function buildStrip(brackets, opts) {
   // Medelstrecket carvas bara i staplar som når klart över bandet – annars
   // "smetas" den mörka färgen ut över topparna där kurvan är flack.
   const putSegs = (segs, xa, xb, capZ) => {
-    const barTop = segs.length ? BASE_TOP + segs[segs.length - 1].z1 : 0;
+    const barTop = segs.length ? B + segs[segs.length - 1].z1 : 0;
     const allow = !mean || barTop > mean.z1 + 0.6;
     for (const s of segs) {
-      const za = BASE_TOP + s.z0, zb = Math.min(BASE_TOP + s.z1, capZ);
+      const za = B + s.z0, zb = Math.min(B + s.z1, capZ);
       put(s.part, xa, xb, y0, y1, za - (s.z0 > 0 ? EPS : BASE_OVERLAP), zb, allow);
     }
   };
@@ -221,7 +222,7 @@ export function buildStrip(brackets, opts) {
     const room = topOf(last) - topOf(prev);
     const bw = xR(last.p1) - xL(last.p0);
     if (last.p1 >= 99.99 && room > g.height + 6 && bw >= 1.4 && g.shapes.length) {
-      wall = { bar: last, glyph: g, zBase: BASE_TOP + topOf(prev), zTop: BASE_TOP + topOf(last), xa: xL(last.p0), xb: xR(last.p1) };
+      wall = { bar: last, glyph: g, zBase: B + topOf(prev), zTop: B + topOf(last), xa: xL(last.p0), xb: xR(last.p1) };
     }
   }
 
@@ -282,19 +283,19 @@ export function buildStrip(brackets, opts) {
       if (top < minTop) {
         putSegs(segs, xa, xb + EPS, Infinity);
         for (const [ya, yb] of cov) {
-          boxTris(xa, xb + EPS, ya, yb, BASE_TOP + Math.max(0, top) - EPS,
-            BASE_TOP + top + TOP_ENGRAVE_D, arr("numbers"));
+          boxTris(xa, xb + EPS, ya, yb, B + Math.max(0, top) - EPS,
+            B + top + TOP_ENGRAVE_D, arr("numbers"));
         }
         continue;
       }
-      const pocketBot = BASE_TOP + top - TOP_ENGRAVE_D;
+      const pocketBot = B + top - TOP_ENGRAVE_D;
       const topPart = segs[segs.length - 1].part;
       putSegs(segs, xa, xb + EPS, pocketBot);
       for (const [ya, yb] of subtract([[y0, y1]], cov)) {
-        boxTris(xa, xb + EPS, ya, yb, pocketBot - EPS, BASE_TOP + top, arr(topPart));
+        boxTris(xa, xb + EPS, ya, yb, pocketBot - EPS, B + top, arr(topPart));
       }
       for (const [ya, yb] of cov) {
-        boxTris(xa, xb + EPS, ya, yb, pocketBot - EPS, BASE_TOP + top, arr("numbers"));
+        boxTris(xa, xb + EPS, ya, yb, pocketBot - EPS, B + top, arr("numbers"));
       }
     }
   }
@@ -317,11 +318,11 @@ export function buildStrip(brackets, opts) {
     // sidoslabbar utanför sifferbandet
     for (const [sa, sb] of [[y0, -yHalf], [yHalf, y1]]) {
       const segs2 = wall.bar.segs.map((sg) => ({ ...sg }));
-      const barTop = BASE_TOP + topOf(wall.bar);
+      const barTop = B + topOf(wall.bar);
       const allow = !mean || barTop > mean.z1 + 0.6;
       for (const sg of segs2) {
         put(sg.part, wall.xa, wall.xa + D + EPS, sa, sb,
-          BASE_TOP + sg.z0 - (sg.z0 > 0 ? EPS : BASE_OVERLAP), BASE_TOP + sg.z1, allow);
+          B + sg.z0 - (sg.z0 > 0 ? EPS : BASE_OVERLAP), B + sg.z1, allow);
       }
     }
     const dy = 0.25;
@@ -330,10 +331,10 @@ export function buildStrip(brackets, opts) {
     for (let i = 0; i < nCol; i++) {
       const ya = -yHalf + i * wcol, yb = ya + wcol, yc = (ya + yb) / 2;
       const cov = coverageAtX(polys, yc)
-        .map(([a, c]) => [Math.max(a, BASE_TOP + 0.3), Math.min(c, wall.zTop - 0.3)])
+        .map(([a, c]) => [Math.max(a, B + 0.3), Math.min(c, wall.zTop - 0.3)])
         .filter(([a, c]) => c > a);
       for (const sg of wall.bar.segs) {
-        const za = BASE_TOP + sg.z0, zb = BASE_TOP + sg.z1;
+        const za = B + sg.z0, zb = B + sg.z1;
         for (const [ia, ib] of subtract([[za, zb]], cov)) {
           put(sg.part, wall.xa, wall.xa + D + EPS, ya, yb + EPS,
             ia - (sg.z0 > 0 ? EPS : BASE_OVERLAP), ib);
@@ -351,7 +352,7 @@ export function buildStrip(brackets, opts) {
     const hL = topOf(bracketAt(sg.p - 0.5));
     const hR = topOf(bracketAt(sg.p + 0.5));
     const h = Math.max(hL, hR, 3) + 2;
-    put("split", sg.xStart, sg.xStart + sg.w, y0, y1, BASE_TOP - BASE_OVERLAP, BASE_TOP + h);
+    put("split", sg.xStart, sg.xStart + sg.w, y0, y1, B - BASE_OVERLAP, B + h);
   }
 
   return {
@@ -376,6 +377,7 @@ export function stripPAt(map, x) {
 
 // ---------- kvadrat ----------
 export function buildSquare(brackets, opts) {
+  const B = opts.baseTop ?? BASE_TOP; // tunn platta i webbvyn, full i STL
   const S = opts.length;
   const pitch = S / 10;
   const w = pitch * 0.8;
@@ -391,7 +393,7 @@ export function buildSquare(brackets, opts) {
     let xa = fx(b.p0);
     const xb = fx(b.p1);
     if (b.minLen && xb - xa < b.minLen) xa = xb - b.minLen;
-    boxTris(xa, xb + EPS, yMid - w / 2, yMid + w / 2, BASE_TOP - BASE_OVERLAP, BASE_TOP + h, out);
+    boxTris(xa, xb + EPS, yMid - w / 2, yMid + w / 2, B - BASE_OVERLAP, B + h, out);
   }
   return {
     parts: { graph: out },
@@ -402,6 +404,7 @@ export function buildSquare(brackets, opts) {
 
 // ---------- spiral ----------
 export function buildSpiral(brackets, opts) {
+  const B = opts.baseTop ?? BASE_TOP; // tunn platta i webbvyn, full i STL
   const R = opts.length / 2;
   const spiralWidth = opts.spiralWidth, spiralGap = opts.spiralGap;
   const rOut = R - opts.endMargin - spiralWidth / 2;
@@ -432,7 +435,7 @@ export function buildSpiral(brackets, opts) {
     const steps = Math.max(2, Math.ceil((t1 - t0) / 0.09));
     const path = [];
     for (let i = 0; i <= steps; i++) path.push(pointAt(t0 + ((t1 - t0) * i) / steps));
-    sweptBox(extendPath(path, EPS), spiralWidth, BASE_TOP - BASE_OVERLAP, BASE_TOP + h, out);
+    sweptBox(extendPath(path, EPS), spiralWidth, B - BASE_OVERLAP, B + h, out);
   }
   return {
     parts: { graph: out },

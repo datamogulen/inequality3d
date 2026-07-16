@@ -3,7 +3,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { loadIndex, loadCountry, getSeries, getComponent, getGovFootprint, MEASURE_INFO } from "./data.js";
 import {
   buildStrip, buildSpiral, buildSquare, buildPlinth, buildInlay,
-  qrInlayTris, trisToGeometry, stripPAt,
+  qrInlayTris, trisToGeometry, stripPAt, boxTris,
 } from "./geometry.js";
 import { loadFont, loadBoldFont, textShapes, textBlock, translateShapes } from "./text.js";
 import { exportSTL } from "./stl.js";
@@ -80,6 +80,7 @@ const M_BACK = { inc: "income", wea: "wealth", co2: "carbon" };
   }
   if (q.has("stack")) state.stack = q.get("stack") !== "0";
   if (q.get("cur") === "mer") state.currency = "mer";
+  if (q.get("sc") && +q.get("sc") > 0) state.scales[state.measure] = 1 / +q.get("sc");
   if (q.has("top")) state.cutTop = +q.get("top") || 0;
   if (q.get("gov") === "inc") state.govMode = "income";
   if (q.get("debt") === "1") state.debt = true;
@@ -95,6 +96,9 @@ function stateToQuery() {
   p.set("sh", state.shapes.join(","));
   p.set("stack", state.stack ? "1" : "0");
   if (state.currency === "mer") p.set("cur", "mer");
+  if (Math.abs(state.scales[state.measure] / MEASURE[state.measure].scale - 1) > 1e-6) {
+    p.set("sc", String(+(1 / state.scales[state.measure]).toFixed(2)));
+  }
   if (String(state.cutTop) !== "99") p.set("top", String(state.cutTop));
   if (state.govMode === "income") p.set("gov", "inc");
   if (state.debt) p.set("debt", "1");
@@ -336,10 +340,13 @@ function decileGlyphs(boldFont, depth) {
   return out;
 }
 
-function makeModel(countryData, shape, font, boldFont, warns) {
+const DISPLAY_BASE = 0.15; // platt platta i webbvyn – låga värden ska inte se höga ut
+
+function makeModel(countryData, shape, font, boldFont, warns, mode = "display") {
   const series = getSeries(countryData, state.measure, state.year, state.currency);
   if (!series) return null;
   const opts = shapeOpts(shape);
+  if (mode === "display") opts.baseTop = DISPLAY_BASE;
   const scale = state.scales[state.measure];
   const notes = [];
 
@@ -370,24 +377,38 @@ function makeModel(countryData, shape, font, boldFont, warns) {
         state.cutTop, ["v"]
       );
       hoverRows = rows.map((r) => ({ p0: r.p0, p1: r.p1, merged: r.merged, v: r.v }));
-      const minV = Math.min(0, ...rows.map((r) => r.v));
-      const H0 = -minV * scale; // nollplanets höjd
-      bracketRows = rows.map((r) => {
-        const segs = [];
-        if (r.v >= 0) {
-          if (H0 + r.v * scale > 1e-6) segs.push({ part: "graph", z0: 0, z1: H0 + r.v * scale });
-        } else {
-          const zTop = H0 + r.v * scale; // < H0
-          if (zTop > 1e-6) segs.push({ part: "graph", z0: 0, z1: zTop });
-          segs.push({ part: "debt", z0: Math.max(0, zTop), z1: H0 });
+      if (mode === "display") {
+        // webbvyn: gemensamt nollplan, skulderna hänger under – höjder
+        // jämförbara mellan länder (STL:en behåller förhöjt nollplan)
+        const cap = state.clampMm > 0 ? state.clampMm : Infinity;
+        const dz = -DISPLAY_BASE - 0.02; // häng från plattans UNDERSIDA (inget z-fajt)
+        bracketRows = rows.map((r) => {
+          const h = r.v * scale;
+          const segs = [];
+          if (h > 1e-6) segs.push({ part: "graph", z0: 0, z1: Math.min(h, cap) });
+          else if (h < -1e-6) segs.push({ part: "debt", z0: Math.max(h, -cap) + dz, z1: dz });
+          return { p0: r.p0, p1: r.p1, segs, merged: r.merged, minLen: r.minLen };
+        });
+        meanH = series.mean * scale;
+      } else {
+        const minV = Math.min(0, ...rows.map((r) => r.v));
+        const H0 = -minV * scale; // nollplanets höjd
+        bracketRows = rows.map((r) => {
+          const segs = [];
+          if (r.v >= 0) {
+            if (H0 + r.v * scale > 1e-6) segs.push({ part: "graph", z0: 0, z1: H0 + r.v * scale });
+          } else {
+            const zTop = H0 + r.v * scale; // < H0
+            if (zTop > 1e-6) segs.push({ part: "graph", z0: 0, z1: zTop });
+            segs.push({ part: "debt", z0: Math.max(0, zTop), z1: H0 });
+          }
+          return { p0: r.p0, p1: r.p1, segs, merged: r.merged, minLen: r.minLen };
+        });
+        meanH = H0 + series.mean * scale;
+        for (const b of bracketRows) {
+          for (const s of b.segs) s.z1 = Math.min(s.z1, state.clampMm > 0 ? state.clampMm : Infinity);
+          b.segs = b.segs.filter((s) => s.z1 > s.z0);
         }
-        return { p0: r.p0, p1: r.p1, segs, merged: r.merged, minLen: r.minLen };
-      });
-      meanH = H0 + series.mean * scale;
-      // klipp vid clamp
-      for (const b of bracketRows) {
-        for (const s of b.segs) s.z1 = Math.min(s.z1, state.clampMm > 0 ? state.clampMm : Infinity);
-        b.segs = b.segs.filter((s) => s.z1 > s.z0);
       }
       notes.push("debt");
     }
@@ -423,10 +444,6 @@ function makeModel(countryData, shape, font, boldFont, warns) {
     built.clamped = br.some((b) => b.clamped);
   }
 
-  const cName = countryName(countryData).toUpperCase();
-  const qrZone = qrModules(countryData.code, built.plate);
-  const txt = bottomText(font, built.plate, cName, qrZone);
-
   const cCol = colorByCountry.get(countryData.code);
   const parts = [];
   const order = ["graph", "gov", "cons", "inv", "debt", "mean", "split", "numbers"];
@@ -436,12 +453,40 @@ function makeModel(countryData, shape, font, boldFont, warns) {
     const color = key === "graph" || key === "cons" ? cCol : new THREE.Color(PART_COLORS[key]);
     parts.push({ key, geoms: [trisToGeometry(tris)], color });
   }
-  parts.push({ key: "base", geoms: buildPlinth(built.plate, txt.shapes, qrZone ? qrZone.rects : []), color: new THREE.Color(PART_COLORS.base) });
-  const textGeoms = buildInlay(txt.shapes);
-  if (qrZone) textGeoms.push(trisToGeometry(qrInlayTris(qrZone.rects)));
-  parts.push({ key: "text", geoms: textGeoms, color: new THREE.Color(PART_COLORS.text) });
+  if (mode === "display") {
+    // platt platta, bara footprint – gravyr/QR byggs först vid export
+    let plateGeo;
+    if (built.plate.kind === "circle") {
+      plateGeo = new THREE.CylinderGeometry(built.plate.r, built.plate.r, DISPLAY_BASE, 48);
+      plateGeo.rotateX(Math.PI / 2);
+      plateGeo.translate(0, 0, DISPLAY_BASE / 2);
+    } else {
+      const tris = [];
+      boxTris(-built.plate.w / 2, built.plate.w / 2, -built.plate.d / 2, built.plate.d / 2, 0, DISPLAY_BASE, tris);
+      plateGeo = trisToGeometry(tris);
+    }
+    parts.push({ key: "base", geoms: [plateGeo], color: new THREE.Color(PART_COLORS.base) });
+  } else {
+    const cName = countryName(countryData).toUpperCase();
+    const qrZone = qrModules(countryData.code, built.plate);
+    const txt = bottomText(font, built.plate, cName, qrZone);
+    parts.push({ key: "base", geoms: buildPlinth(built.plate, txt.shapes, qrZone ? qrZone.rects : []), color: new THREE.Color(PART_COLORS.base) });
+    const textGeoms = buildInlay(txt.shapes);
+    if (qrZone) textGeoms.push(trisToGeometry(qrInlayTris(qrZone.rects)));
+    parts.push({ key: "text", geoms: textGeoms, color: new THREE.Color(PART_COLORS.text) });
+  }
 
   return { series, built, parts, notes };
+}
+
+// Exportgeometrin (tryckbar: full plint, gravyr, QR, förhöjt skuld-nollplan)
+// byggs först när någon exporterar – och cachas per modell.
+async function ensureExportParts(m) {
+  if (!m.exportParts) {
+    const model = makeModel(m.cd, m.shape, await loadFont(), await loadBoldFont(), null, "export");
+    m.exportParts = model ? model.parts : [];
+  }
+  return m.exportParts;
 }
 
 function disposeModels() {
@@ -585,7 +630,7 @@ async function rebuild() {
       if (series.clampedNeg && !(state.measure === "wealth" && state.debt)) warns.add(t("warn_neg")(cName));
       const fm = t("file_measure")[state.measure];
       currentModels.push({
-        code: cd.code, name: cName, shape, parts, series, group,
+        code: cd.code, name: cName, shape, parts, series, group, cd,
         map: built.map, hover: built.hover,
         basename: `${cd.code}_${fm}_${series.year}_${t("shape_" + shape)}`,
       });
@@ -650,13 +695,20 @@ function renderExports() {
     lbl.textContent = `${m.name} · ${t("shape_" + m.shape)}`;
     const btns = document.createElement("span");
     btns.className = "btns";
+    const keys = new Set(m.parts.map((x) => x.key).filter((k) => k !== "base"));
+    keys.add("base"); keys.add("text");
     for (const key of PART_ORDER) {
-      const p = m.parts.find((x) => x.key === key);
-      if (!p || !p.geoms.length) continue;
+      if (!keys.has(key)) continue;
       const b = document.createElement("button");
       b.className = "btn";
       b.textContent = t("part_" + key);
-      b.onclick = () => exportSTL(p.geoms, `${m.basename}_${t("file_" + key)}.stl`);
+      b.onclick = async () => {
+        b.disabled = true;
+        const ps = await ensureExportParts(m);
+        const p = ps.find((x) => x.key === key);
+        if (p && p.geoms.length) exportSTL(p.geoms, `${m.basename}_${t("file_" + key)}.stl`);
+        b.disabled = false;
+      };
       btns.appendChild(b);
     }
     row.append(lbl, btns);
@@ -664,11 +716,12 @@ function renderExports() {
   }
   if (!currentModels.length) el.innerHTML = `<span class="hint">${t("no_models")}</span>`;
 }
-document.getElementById("exportAll").onclick = () => {
+document.getElementById("exportAll").onclick = async () => {
   let i = 0;
   for (const m of currentModels) {
+    const ps = await ensureExportParts(m);
     for (const key of PART_ORDER) {
-      const p = m.parts.find((x) => x.key === key);
+      const p = ps.find((x) => x.key === key);
       if (p && p.geoms.length) {
         setTimeout(() => exportSTL(p.geoms, `${m.basename}_${t("file_" + key)}.stl`), i++ * 350);
       }
@@ -768,6 +821,8 @@ function syncControls() {
   $("moreLink").href = `m.html?c=${state.countries[0] || "SE"}&m=${M_SHORT[state.measure]}&lang=${getLang()}`;
   $("scaleUnit").textContent = t("scale_per_mm") + " " + (state.measure === "carbon" ? "tCO₂e" : "USD");
   $("scale").value = fmtScaleInput();
+  const ratio = state.scales[state.measure] / MEASURE[state.measure].scale;
+  $("zslider").value = Math.max(-6, Math.min(6, 2 * Math.log2(ratio)));
   $("baseSize").value = state.baseSize;
   $("clampMm").value = state.clampMm;
   renderCountryList();
@@ -839,6 +894,16 @@ $("scale").addEventListener("change", (e) => {
   rebuild();
 });
 $("scaleNice").addEventListener("click", () => { state.scales[state.measure] = MEASURE[state.measure].scale; syncControls(); rebuild(); });
+$("zslider").addEventListener("input", (e) => {
+  // live-förhandsvisning av enheten medan man drar
+  const sc = MEASURE[state.measure].scale * Math.pow(2, +e.target.value / 2);
+  $("scale").value = +((1 / sc).toFixed(1 / sc >= 100 ? 0 : 2));
+});
+$("zslider").addEventListener("change", (e) => {
+  state.scales[state.measure] = MEASURE[state.measure].scale * Math.pow(2, +e.target.value / 2);
+  syncControls();
+  rebuild();
+});
 $("baseSize").addEventListener("change", (e) => { state.baseSize = Math.max(60, Math.min(256, +e.target.value || 180)); syncControls(); rebuild(); });
 $("clampMm").addEventListener("change", (e) => { state.clampMm = Math.max(0, +e.target.value || 0); rebuild(); });
 $("stack").addEventListener("change", (e) => { state.stack = e.target.checked; rebuild(); });
