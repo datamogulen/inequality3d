@@ -9,6 +9,7 @@ import * as opentype from "opentype.js";
 const parseFont = opentype.parse ?? opentype.default.parse;
 
 let fontPromise = null;
+let boldPromise = null;
 
 export function loadFont() {
   if (!fontPromise) {
@@ -17,6 +18,17 @@ export function loadFont() {
       .then((buf) => parseFont(buf));
   }
   return fontPromise;
+}
+
+// Fet variant för små graverade siffror – tunna Regular-streck (~0,7 mm)
+// blir för klena i tvåfärgstryck.
+export function loadBoldFont() {
+  if (!boldPromise) {
+    boldPromise = fetch("fonts/OpenSans-Bold.ttf")
+      .then((r) => r.arrayBuffer())
+      .then((buf) => parseFont(buf));
+  }
+  return boldPromise;
 }
 
 // Glyfshapes för EN rad text, centrerad kring origo. mirror=true speglar i x

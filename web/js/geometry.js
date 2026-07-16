@@ -224,8 +224,11 @@ export function buildStrip(brackets, opts) {
     }
   }
 
-  // gravyrkolumner i zonerna (lager + ficka + nummer-inlägg)
-  const dx = 0.3;
+  // gravyrkolumner i zonerna (lager + ficka + nummer-inlägg).
+  // Staplar tunnare än fickdjupet får UPPHÖJD siffra i stället för ficka
+  // (den gamla "minsta padd"-lösningen gav en ful plakett i utskrift).
+  const dx = 0.25;
+  const minTop = TOP_ENGRAVE_D + 0.35;
   for (const z of zones) {
     const n = Math.max(1, Math.round((z.gx1 - z.gx0) / dx));
     const w = (z.gx1 - z.gx0) / n;
@@ -234,23 +237,23 @@ export function buildStrip(brackets, opts) {
       const p = ((xc - x0) / L) * 100;
       const b = bracketAt(p);
       if (!b) continue;
-      let segs = b.segs;
-      let top = topOf(b);
-      // minsta gravyrpadd för nästan tomma staplar
-      const minTop = TOP_ENGRAVE_D + 0.25;
-      if (top < minTop) {
-        const padPart = segs.length ? segs[segs.length - 1].part : "graph";
-        segs = [...segs, { part: padPart, z0: top, z1: minTop }];
-        top = minTop;
-      }
-      const pocketBot = BASE_TOP + top - TOP_ENGRAVE_D;
-      const topPart = segs[segs.length - 1].part;
-      // segment under fickbotten
-      putSegs(segs, xa, xb + EPS, pocketBot);
-      // ficklagret: solid där inte täckt, nummer där täckt
+      const segs = b.segs;
+      const top = topOf(b);
       const cov = coverageAtX(z.polys, xc)
         .map(([a, c]) => [Math.max(y0, a), Math.min(y1, c)])
         .filter(([a, c]) => c > a);
+      if (top < minTop) {
+        // stapeln byggs hel; siffran läggs ovanpå
+        putSegs(segs, xa, xb + EPS, Infinity);
+        for (const [ya, yb] of cov) {
+          boxTris(xa, xb + EPS, ya, yb, BASE_TOP + Math.max(0, top) - EPS,
+            BASE_TOP + top + TOP_ENGRAVE_D, arr("numbers"));
+        }
+        continue;
+      }
+      const pocketBot = BASE_TOP + top - TOP_ENGRAVE_D;
+      const topPart = segs[segs.length - 1].part;
+      putSegs(segs, xa, xb + EPS, pocketBot);
       for (const [ya, yb] of subtract([[y0, y1]], cov)) {
         boxTris(xa, xb + EPS, ya, yb, pocketBot - EPS, BASE_TOP + top, arr(topPart));
       }
@@ -391,9 +394,9 @@ export function buildPlinth(plate, textShapes, qrRects = []) {
   base.translate(0, 0, TEXT_PLATE - BASE_OVERLAP);
 
   const lamina = [];
-  const polys = textShapes && textShapes.length ? polysFromShapes(textShapes) : [];
+  const polys = textShapes && textShapes.length ? polysFromShapes(textShapes, 8) : [];
   const xMax = plate.kind === "circle" ? plate.r : plate.w / 2;
-  const dx = 0.4;
+  const dx = 0.3;
   const n = Math.max(1, Math.round((2 * xMax) / dx));
   const w = (2 * xMax) / n;
   for (let i = 0; i < n; i++) {

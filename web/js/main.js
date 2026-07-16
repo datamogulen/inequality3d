@@ -6,7 +6,7 @@ import {
   buildStrip, buildSpiral, buildSquare, buildPlinth, buildInlay,
   qrInlayTris, trisToGeometry, INLAY_H,
 } from "./geometry.js";
-import { loadFont, textShapes, textBlock, translateShapes } from "./text.js";
+import { loadFont, loadBoldFont, textShapes, textBlock, translateShapes } from "./text.js";
 import { exportSTL } from "./stl.js";
 import { t, getLang, toggleLang, applyStatic, countryName } from "./i18n.js";
 import qrcode from "../vendor/qrcode.mjs";
@@ -260,17 +260,18 @@ function bottomText(font, plate, cName, qrZone) {
   return blk;
 }
 
-function decileGlyphs(font, depth) {
-  const size = Math.min(6, depth * 0.28);
+// Fetstil + stora siffror: tunna streck överlever inte tvåfärgstryck.
+function decileGlyphs(boldFont, depth) {
+  const size = Math.min(9, depth * 0.24);
   const out = [];
   for (let k = 0; k < 10; k++) {
-    const ts = textShapes(font, String(k + 1), size, false);
+    const ts = textShapes(boldFont, String(k + 1), size, false);
     out.push({ shapes: ts.shapes, width: ts.width, height: ts.height });
   }
   return out;
 }
 
-function makeModel(countryData, shape, font) {
+function makeModel(countryData, shape, font, boldFont) {
   const series = getSeries(countryData, state.source, state.measure, state.year, state.currency);
   if (!series) return null;
   const opts = shapeOpts(shape);
@@ -326,7 +327,7 @@ function makeModel(countryData, shape, font) {
       );
       bracketRows = rowsToSegs(rows, [{ part: "graph", field: "v" }], scale, state.clampMm);
     }
-    if (state.deciles) opts.decileGlyphs = decileGlyphs(font, opts.depth);
+    if (state.deciles) opts.decileGlyphs = decileGlyphs(boldFont, opts.depth);
     opts.meanH = meanH > 0.5 ? meanH : null;
     built = buildStrip(bracketRows, opts);
     built.merged = bracketRows.some((b) => b.merged);
@@ -396,7 +397,7 @@ async function rebuild() {
   const status = document.getElementById("status");
   status.textContent = t("building");
   assignColors();
-  const font = await loadFont();
+  const [font, boldFont] = await Promise.all([loadFont(), loadBoldFont()]);
   const countryDatas = await Promise.all(state.countries.map(loadCountry));
   disposeModels();
 
@@ -409,7 +410,7 @@ async function rebuild() {
     let any = false;
     for (let si = 0; si < state.shapes.length; si++) {
       const shape = state.shapes[si];
-      const model = makeModel(cd, shape, font);
+      const model = makeModel(cd, shape, font, boldFont);
       if (!model) { warns.add(t("warn_nodata")(cName)); continue; }
       any = true;
       const { series, built, parts, notes } = model;
