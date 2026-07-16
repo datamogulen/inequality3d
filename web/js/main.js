@@ -204,7 +204,8 @@ function shapeOpts(shape) {
 
 function qrModules(code, plate) {
   if (!state.qr) return null;
-  const url = `https://hedin.it/i3d/?c=${code}&m=${M_SHORT[state.measure]}`;
+  // gemensam kort-URL-tjänst på hedin.it (r/index.php i hedin_cleanup-repot)
+  const url = `https://hedin.it/r/?p=i3d&c=${code}&m=${M_SHORT[state.measure]}`;
   const qr = qrcode(0, "M");
   qr.addData(url);
   qr.make();

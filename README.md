@@ -78,10 +78,11 @@ Sidan är självförsörjande (three.js och opentype.js ligger vendorerade i
   skuldens nivå; skulderna blir ett eget rött lager som hänger från
   nollplanet (djupast vid p0), positiv förmögenhet växer ovanför.
 - **QR-kod på undersidan** (option, standard på): länkar till en infosida
-  per land+mått – `https://hedin.it/i3d/?c=SE&m=co2` → `m.html` med
+  per land+mått – `https://hedin.it/r/?p=i3d&c=SE&m=co2` → `m.html` med
   nyckeltal (median/medel/toppandelar/Gini), metodbeskrivning
   (Chancel-komponenterna, Oxfam-skillnaden) och källor, sv/en.
-  Kort-URL:en kräver `deploy/i3d/index.php` på hedin.it-roten.
+  `/r/` är hedin.it:s gemensamma kort-URL-tjänst (versioneras i
+  hedin_cleanup-repot) – tryckta QR-koder överlever att mål flyttas.
 - **Toppupplösning**: hela centiler 0–99, tiondelar 99–99,9 och
   hundradelar 99,9–99,99 + p99,99–100 (118 klasser) från WID.
 - **Toppen som viktat snitt** (standard: topp 1 % av befolkningen; även
