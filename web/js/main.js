@@ -12,11 +12,11 @@ import qrcode from "../vendor/qrcode.mjs";
 
 // ---------- konstanter ----------
 
-const STATE_V = 6; // bumpa för att nollställa inaktuella val i localStorage
+const STATE_V = 7; // bumpa för att nollställa inaktuella val i localStorage
 const PALETTE = ["#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e34948", "#e87ba4", "#eb6834"];
 const PART_COLORS = {
   base: 0xd9d2c2, text: 0xd9a021, numbers: 0x2f2f2f, mean: 0x1c1c1c,
-  gov: 0x9a9a92, inv: 0x584a9e, debt: 0xc23434, split: 0xffffff,
+  gov: 0x9a9a92, inv: 0xb9a7ef, debt: 0xc23434, split: 0xffffff,
 };
 // Fasta "snygga" enheter per mått – 1 mm betyder alltid lika mycket.
 const MEASURE = {
@@ -44,7 +44,7 @@ const state = {
   govMode: "flat", // "flat" = Chancel (lika/person), "income" = Oxfam
   debt: false,     // förmögenhet: skuldlager under förhöjt nollplan
   qr: true,        // QR-kod på undersidan
-  stack: false,    // stapla länderna bakom varandra (minst främst)
+  stack: true,     // stapla länderna bakom varandra (minst främst)
   more: false,     // visa alla länder (varierande datakvalitet)
 };
 try {
@@ -61,7 +61,53 @@ try {
   }
   if (state.currency !== "mer") state.currency = "ppp";
 } catch { /* ignorera trasig lagring */ }
-function persist() { localStorage.setItem("ineq3d", JSON.stringify(state)); }
+
+// Delbara vyer: URL-parametrar vinner över sparat läge, och adressfältet
+// hålls uppdaterat så att aktuell vy alltid går att kopiera/dela.
+const M_BACK = { inc: "income", wea: "wealth", co2: "carbon" };
+(function applyUrlState() {
+  const q = new URLSearchParams(location.search);
+  if (![...q.keys()].some((k) => k !== "lang")) return;
+  if (M_BACK[q.get("m")]) state.measure = M_BACK[q.get("m")];
+  if (q.get("c")) {
+    const cs = q.get("c").split(",").map((x) => x.trim().toUpperCase()).filter(Boolean);
+    if (cs.length) state.countries = cs;
+  }
+  if (q.get("y") && +q.get("y")) state.year = +q.get("y");
+  if (q.get("sh")) {
+    const sh = q.get("sh").split(",").filter((x) => ["strip", "spiral", "square"].includes(x));
+    if (sh.length) state.shapes = sh;
+  }
+  if (q.has("stack")) state.stack = q.get("stack") !== "0";
+  if (q.get("cur") === "mer") state.currency = "mer";
+  if (q.has("top")) state.cutTop = +q.get("top") || 0;
+  if (q.get("gov") === "inc") state.govMode = "income";
+  if (q.get("debt") === "1") state.debt = true;
+  if (q.get("dec") === "0") state.deciles = false;
+  if (q.get("qr") === "0") state.qr = false;
+})();
+
+function stateToQuery() {
+  const p = new URLSearchParams();
+  p.set("m", M_SHORT[state.measure]);
+  p.set("c", state.countries.join(","));
+  p.set("y", String(state.year));
+  p.set("sh", state.shapes.join(","));
+  p.set("stack", state.stack ? "1" : "0");
+  if (state.currency === "mer") p.set("cur", "mer");
+  if (String(state.cutTop) !== "99") p.set("top", String(state.cutTop));
+  if (state.govMode === "income") p.set("gov", "inc");
+  if (state.debt) p.set("debt", "1");
+  if (!state.deciles) p.set("dec", "0");
+  if (!state.qr) p.set("qr", "0");
+  p.set("lang", getLang());
+  return "?" + p.toString();
+}
+
+function persist() {
+  localStorage.setItem("ineq3d", JSON.stringify(state));
+  try { history.replaceState(null, "", stateToQuery()); } catch { /* file:// m.m. */ }
+}
 
 let index = null;
 let colorByCountry = new Map();
@@ -798,6 +844,16 @@ $("clampMm").addEventListener("change", (e) => { state.clampMm = Math.max(0, +e.
 $("stack").addEventListener("change", (e) => { state.stack = e.target.checked; rebuild(); });
 $("moreCountries").addEventListener("change", (e) => { state.more = e.target.checked; renderCountryList(); persist(); });
 $("langBtn").addEventListener("click", () => { toggleLang(); syncControls(); rebuild(); });
+$("shareBtn").addEventListener("click", async () => {
+  const url = location.origin + location.pathname + stateToQuery();
+  try {
+    await navigator.clipboard.writeText(url);
+    $("shareBtn").textContent = "✓";
+  } catch {
+    prompt("URL:", url);
+  }
+  setTimeout(() => { $("shareBtn").textContent = "🔗"; }, 1400);
+});
 
 // ---------- play: animera årsutvecklingen ----------
 let playing = false;

@@ -21,6 +21,7 @@ export const I18N = {
     more_countries: "Fler länder (varierande datakvalitet)",
     dq_title: "WID:s kvalitetspoäng 1–5 för inkomstdatat (5 = bäst)",
     stack_lbl: "Stapla länderna bakom varandra (minst främst)",
+    share_lbl: "Kopiera länk till denna vy",
     tip_decile: "decil",
     fs_shape: "Form",
     sh_strip: "Remsa (percentil-staket)",
@@ -96,6 +97,7 @@ export const I18N = {
     more_countries: "More countries (varying data quality)",
     dq_title: "WID quality score 1–5 for the income data (5 = best)",
     stack_lbl: "Stack countries behind each other (smallest in front)",
+    share_lbl: "Copy a link to this view",
     tip_decile: "decile",
     fs_shape: "Shape",
     sh_strip: "Strip (percentile fence)",
@@ -174,6 +176,9 @@ export function applyStatic() {
   document.title = t("docTitle");
   for (const el of document.querySelectorAll("[data-i18n]")) {
     el.textContent = t(el.dataset.i18n);
+  }
+  for (const el of document.querySelectorAll("[data-i18n-title]")) {
+    el.title = t(el.dataset.i18nTitle);
   }
 }
 
