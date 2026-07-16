@@ -14,6 +14,7 @@ const BASE_OVERLAP = 0.1;
 export const GROOVE_W = 1.2;      // decilskårans bredd, mm
 export const TOP_ENGRAVE_D = 0.6; // decilnumrens gravyrdjup, mm
 export const MEAN_T = 0.9;        // medelstreckets tjocklek, mm
+export const SPLIT_W = 1.6;       // 50/50-markörens bredd, mm
 
 // ---------- primitiver ----------
 
@@ -143,14 +144,39 @@ function coverageAtX(polys, x) {
 //             minLen?}]
 // opts: { length, depth, endMargin, grooves (default true),
 //         decileGlyphs (array[10] {shapes,width,height} | null),
-//         meanH (mm över plattan | null) }
+//         meanH (mm över plattan | null), splitP (percentil | null) }
+// Decilskåror och 50/50-markören är ICKE-DATA: de sprängs in som extra
+// mellanrum så att varje percentil behåller sin fulla databredd.
 // Returnerar { parts: {namn: tris[]}, plate, stats }.
 export function buildStrip(brackets, opts) {
   const L = opts.length, W = opts.depth;
   const x0 = -L / 2, y0 = -W / 2, y1 = W / 2;
-  const xAt = (p) => x0 + (p / 100) * L;
-  const isDec = (p) => p > 0 && p < 100 && Math.abs(p / 10 - Math.round(p / 10)) < 1e-6;
   const grooves = opts.grooves !== false;
+
+  // luckor (sorterade i p)
+  const gaps = [];
+  if (grooves) for (let k = 1; k <= 9; k++) gaps.push({ p: k * 10, w: GROOVE_W, kind: "groove" });
+  if (opts.splitP != null) {
+    const sp = Math.round(Math.min(Math.max(opts.splitP, 1), 99));
+    const same = gaps.find((g) => g.p === sp);
+    if (same) { same.w = SPLIT_W; same.kind = "split"; }
+    else { gaps.push({ p: sp, w: SPLIT_W, kind: "split" }); gaps.sort((a, b) => a.p - b.p); }
+  }
+  const La = L - gaps.reduce((s, g) => s + g.w, 0);
+  let accW = 0;
+  for (const g of gaps) { g.xStart = x0 + (g.p / 100) * La + accW; accW += g.w; }
+  const before = (p, incl) => gaps.reduce((s, g) => s + ((incl ? g.p <= p : g.p < p) ? g.w : 0), 0);
+  const xL = (p) => x0 + (p / 100) * La + before(p, true);   // stapelns vänsterkant
+  const xR = (p) => x0 + (p / 100) * La + before(p, false);  // stapelns högerkant
+  const pAt = (x) => {
+    let xx = x - x0;
+    for (const g of gaps) {
+      if (x >= g.xStart + g.w) xx -= g.w;
+      else if (x >= g.xStart) return g.p;
+      else break;
+    }
+    return Math.min(100, Math.max(0, (xx / La) * 100));
+  };
 
   const parts = {};
   const arr = (k) => (parts[k] ??= []);
@@ -158,10 +184,9 @@ export function buildStrip(brackets, opts) {
     ? { z0: BASE_TOP + opts.meanH - MEAN_T / 2, z1: BASE_TOP + opts.meanH + MEAN_T / 2 }
     : null;
 
-  // lägg en låda i part, med medelstrecks-splitt
-  const put = (part, xa, xb, ya, yb, za, zb) => {
+  const put = (part, xa, xb, ya, yb, za, zb, allowMean = true) => {
     if (zb <= za) return;
-    if (mean && zb > mean.z0 && za < mean.z1) {
+    if (mean && allowMean && zb > mean.z0 && za < mean.z1) {
       if (za < mean.z0) boxTris(xa, xb, ya, yb, za, mean.z0 + 0.03, arr(part));
       boxTris(xa, xb, ya, yb, Math.max(za, mean.z0), Math.min(zb, mean.z1), arr("mean"));
       if (zb > mean.z1) boxTris(xa, xb, ya, yb, mean.z1 - 0.03, zb, arr(part));
@@ -169,31 +194,48 @@ export function buildStrip(brackets, opts) {
     }
     boxTris(xa, xb, ya, yb, za, zb, arr(part));
   };
-  // alla segment i en kolumn [xa,xb], upp till maxZ (absolut)
+  // Medelstrecket carvas bara i staplar som når klart över bandet – annars
+  // "smetas" den mörka färgen ut över topparna där kurvan är flack.
   const putSegs = (segs, xa, xb, capZ) => {
+    const barTop = segs.length ? BASE_TOP + segs[segs.length - 1].z1 : 0;
+    const allow = !mean || barTop > mean.z1 + 0.6;
     for (const s of segs) {
       const za = BASE_TOP + s.z0, zb = Math.min(BASE_TOP + s.z1, capZ);
-      put(s.part, xa, xb, y0, y1, za - (s.z0 > 0 ? EPS : BASE_OVERLAP), zb);
+      put(s.part, xa, xb, y0, y1, za - (s.z0 > 0 ? EPS : BASE_OVERLAP), zb, allow);
     }
   };
 
-  // percentil → bracket (för gravyrkolumner)
   const bracketAt = (p) => {
     for (const b of brackets) if (p >= b.p0 - 1e-9 && p <= b.p1 + 1e-9) return b;
     return null;
   };
   const topOf = (b) => (b && b.segs.length ? b.segs[b.segs.length - 1].z1 : 0);
 
-  // decilnummer-zoner
+  // "10" på väggen: om sista stapeln reser sig brant räcker inte ovansidan –
+  // siffran graveras då i stapelns vänstervägg (läses från låginkomsthållet).
+  let wall = null;
+  if (opts.decileGlyphs && opts.decileGlyphs[9] && brackets.length >= 2) {
+    const last = brackets[brackets.length - 1];
+    const prev = brackets[brackets.length - 2];
+    const g = opts.decileGlyphs[9];
+    const room = topOf(last) - topOf(prev);
+    const bw = xR(last.p1) - xL(last.p0);
+    if (last.p1 >= 99.99 && room > g.height + 6 && bw >= 1.4 && g.shapes.length) {
+      wall = { bar: last, glyph: g, zBase: BASE_TOP + topOf(prev), zTop: BASE_TOP + topOf(last), xa: xL(last.p0), xb: xR(last.p1) };
+    }
+  }
+
+  // decilnummer-zoner (på ovansidan)
   const zones = [];
   if (opts.decileGlyphs) {
     for (let k = 0; k < 10; k++) {
+      if (wall && k === 9) continue;
       const g = opts.decileGlyphs[k];
       if (!g || !g.shapes.length) continue;
-      const cx = xAt((k + 0.5) * 10);
+      const left = xL(k * 10) + 0.3, right = xR((k + 1) * 10) - 0.3;
+      const cx = (left + right) / 2;
       const half = g.width / 2 + 0.6;
-      let gx0 = Math.max(cx - half, xAt(k * 10) + (k > 0 ? GROOVE_W / 2 : 0) + 0.3);
-      let gx1 = Math.min(cx + half, xAt((k + 1) * 10) - (k < 9 ? GROOVE_W / 2 : 0) - 0.3);
+      const gx0 = Math.max(cx - half, left), gx1 = Math.min(cx + half, right);
       if (gx1 <= gx0) continue;
       const polys = polysFromShapes(g.shapes).map((poly) => ({
         outer: poly.outer.map(([x, y]) => [x + cx, y]),
@@ -202,54 +244,27 @@ export function buildStrip(brackets, opts) {
       zones.push({ gx0, gx1, polys });
     }
   }
-  // 50/50-markör: lodrätt streck vid percentilen där halva totalsumman
-  // ligger till vänster. Egen del ("split"), något högre än grafen lokalt.
-  const SPLIT_W = 1.4;
-  let slot = null;
-  if (opts.splitP != null) {
-    let xs = xAt(Math.min(Math.max(opts.splitP, 1), 98.9));
-    for (const z of zones) { // knuffa ut ur nummerzoner
-      if (xs + SPLIT_W / 2 > z.gx0 && xs - SPLIT_W / 2 < z.gx1) {
-        xs = xs - z.gx0 < z.gx1 - xs ? z.gx0 - SPLIT_W / 2 - 0.2 : z.gx1 + SPLIT_W / 2 + 0.2;
-      }
-    }
-    slot = { x0: xs - SPLIT_W / 2, x1: xs + SPLIT_W / 2, xs };
-  }
-  const zoneCuts = [
-    ...zones.flatMap((z) => [z.gx0, z.gx1]),
-    ...(slot ? [slot.x0, slot.x1] : []),
-  ];
-  const inCutout = (x) =>
-    zones.some((z) => x >= z.gx0 && x <= z.gx1) || (slot && x >= slot.x0 && x <= slot.x1);
+  const zoneCuts = zones.flatMap((z) => [z.gx0, z.gx1]);
+  const inZone = (x) => zones.some((z) => x >= z.gx0 && x <= z.gx1);
 
   let maxH = 0, clamped = 0;
   for (const b of brackets) {
-    let xa = xAt(b.p0), xb = xAt(b.p1);
-    if (grooves) {
-      if (isDec(b.p0)) xa += GROOVE_W / 2;
-      if (isDec(b.p1)) xb -= GROOVE_W / 2;
-    }
-    if (b.minLen && xb - xa < b.minLen) xa = xb - b.minLen;
     maxH = Math.max(maxH, topOf(b));
     if (b.clamped) clamped++;
-    // dela stapelns x-intervall vid zon-/markörgränser; utelämna urtagen
+    if (wall && b === wall.bar) continue; // byggs av vägg-gravyren
+    let xa = xL(b.p0);
+    const xb = xR(b.p1);
+    if (b.minLen && xb - xa < b.minLen) xa = xb - b.minLen;
     const cuts = [xa, ...zoneCuts.filter((c) => c > xa && c < xb).sort((a, c) => a - c), xb];
     for (let i = 0; i + 1 < cuts.length; i++) {
       const sxa = cuts[i], sxb = cuts[i + 1];
-      if (inCutout((sxa + sxb) / 2)) continue; // byggs av gravyr/markör
+      if (inZone((sxa + sxb) / 2)) continue;
       putSegs(b.segs, sxa, sxb + EPS, Infinity);
     }
   }
 
-  if (slot) {
-    const b = bracketAt(((slot.xs - x0) / L) * 100);
-    const h = (b ? topOf(b) : 0) + 2; // sticker upp 2 mm – tydlig markör
-    put("split", slot.x0, slot.x1, y0, y1, BASE_TOP - BASE_OVERLAP, BASE_TOP + h);
-  }
-
-  // gravyrkolumner i zonerna (lager + ficka + nummer-inlägg).
-  // Staplar tunnare än fickdjupet får UPPHÖJD siffra i stället för ficka
-  // (den gamla "minsta padd"-lösningen gav en ful plakett i utskrift).
+  // gravyrkolumner i zonerna (ficka + nummer-inlägg; tunna staplar får
+  // upphöjd siffra i stället)
   const dx = 0.25;
   const minTop = TOP_ENGRAVE_D + 0.35;
   for (const z of zones) {
@@ -257,8 +272,7 @@ export function buildStrip(brackets, opts) {
     const w = (z.gx1 - z.gx0) / n;
     for (let i = 0; i < n; i++) {
       const xa = z.gx0 + i * w, xb = xa + w, xc = (xa + xb) / 2;
-      const p = ((xc - x0) / L) * 100;
-      const b = bracketAt(p);
+      const b = bracketAt(pAt(xc));
       if (!b) continue;
       const segs = b.segs;
       const top = topOf(b);
@@ -266,7 +280,6 @@ export function buildStrip(brackets, opts) {
         .map(([a, c]) => [Math.max(y0, a), Math.min(y1, c)])
         .filter(([a, c]) => c > a);
       if (top < minTop) {
-        // stapeln byggs hel; siffran läggs ovanpå
         putSegs(segs, xa, xb + EPS, Infinity);
         for (const [ya, yb] of cov) {
           boxTris(xa, xb + EPS, ya, yb, BASE_TOP + Math.max(0, top) - EPS,
@@ -284,6 +297,61 @@ export function buildStrip(brackets, opts) {
         boxTris(xa, xb + EPS, ya, yb, pocketBot - EPS, BASE_TOP + top, arr("numbers"));
       }
     }
+  }
+
+  // väggravyr av sista siffran ("10")
+  if (wall) {
+    const D = Math.min(0.5, wall.xb - wall.xa - 0.8);
+    // allt bakom främre laminan
+    putSegs(wall.bar.segs, wall.xa + D, wall.xb + EPS, Infinity);
+    const g = wall.glyph;
+    // centrera i exponerad vägg, håll marginal mot kanterna
+    const zc = Math.max(wall.zBase + g.height / 2 + 2.5,
+      Math.min((wall.zBase + wall.zTop) / 2, wall.zTop - g.height / 2 - 2.5));
+    // glyf i (y,z); spegla y – läses stående framför väggen (från −x)
+    const polys = polysFromShapes(g.shapes).map((poly) => ({
+      outer: poly.outer.map(([gx, gy]) => [-gx, gy + zc]),
+      holes: poly.holes.map((h) => h.map(([gx, gy]) => [-gx, gy + zc])),
+    }));
+    const yHalf = Math.min(W / 2 - 1, g.width / 2 + 1.2);
+    // sidoslabbar utanför sifferbandet
+    for (const [sa, sb] of [[y0, -yHalf], [yHalf, y1]]) {
+      const segs2 = wall.bar.segs.map((sg) => ({ ...sg }));
+      const barTop = BASE_TOP + topOf(wall.bar);
+      const allow = !mean || barTop > mean.z1 + 0.6;
+      for (const sg of segs2) {
+        put(sg.part, wall.xa, wall.xa + D + EPS, sa, sb,
+          BASE_TOP + sg.z0 - (sg.z0 > 0 ? EPS : BASE_OVERLAP), BASE_TOP + sg.z1, allow);
+      }
+    }
+    const dy = 0.25;
+    const nCol = Math.max(1, Math.round((2 * yHalf) / dy));
+    const wcol = (2 * yHalf) / nCol;
+    for (let i = 0; i < nCol; i++) {
+      const ya = -yHalf + i * wcol, yb = ya + wcol, yc = (ya + yb) / 2;
+      const cov = coverageAtX(polys, yc)
+        .map(([a, c]) => [Math.max(a, BASE_TOP + 0.3), Math.min(c, wall.zTop - 0.3)])
+        .filter(([a, c]) => c > a);
+      for (const sg of wall.bar.segs) {
+        const za = BASE_TOP + sg.z0, zb = BASE_TOP + sg.z1;
+        for (const [ia, ib] of subtract([[za, zb]], cov)) {
+          put(sg.part, wall.xa, wall.xa + D + EPS, ya, yb + EPS,
+            ia - (sg.z0 > 0 ? EPS : BASE_OVERLAP), ib);
+        }
+      }
+      for (const [ia, ib] of cov) {
+        boxTris(wall.xa, wall.xa + D + EPS, ya, yb + EPS, ia, ib, arr("numbers"));
+      }
+    }
+  }
+
+  // 50/50-markören fyller sin lucka, något högre än grafen intill
+  const sg = gaps.find((g) => g.kind === "split");
+  if (sg) {
+    const hL = topOf(bracketAt(sg.p - 0.5));
+    const hR = topOf(bracketAt(sg.p + 0.5));
+    const h = Math.max(hL, hR, 3) + 2;
+    put("split", sg.xStart, sg.xStart + sg.w, y0, y1, BASE_TOP - BASE_OVERLAP, BASE_TOP + h);
   }
 
   return {

@@ -13,7 +13,7 @@ import qrcode from "../vendor/qrcode.mjs";
 
 // ---------- konstanter ----------
 
-const STATE_V = 3; // bumpa för att nollställa inaktuella val i localStorage
+const STATE_V = 4; // bumpa för att nollställa inaktuella val i localStorage
 const PALETTE = ["#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e34948", "#e87ba4", "#eb6834"];
 const PART_COLORS = {
   base: 0xd9d2c2, text: 0xd9a021, numbers: 0x2f2f2f, mean: 0x1c1c1c,
@@ -40,7 +40,7 @@ const state = {
   shapes: ["strip"],
   scales: { income: MEASURE.income.scale, wealth: MEASURE.wealth.scale, carbon: MEASURE.carbon.scale },
   baseSize: 180,
-  clampMm: 90,
+  clampMm: 250, // ≈ utskriftsmax (Bambu-bädd 256 mm) – extremtoppar får synas
   cutTop: 99,
   deciles: true,   // skåror + graverade nummer (remsa)
   govMode: "flat", // "flat" = Chancel (lika/person), "income" = Oxfam
@@ -195,7 +195,7 @@ function shapeOpts(shape) {
   const scale = state.scales[state.measure];
   const base = { scale, clampMm: state.clampMm, endMargin: 6 };
   if (shape === "strip") {
-    return { ...base, length: state.baseSize, depth: Math.max(30, state.baseSize * 0.21) };
+    return { ...base, length: state.baseSize, depth: Math.max(30, state.baseSize * 0.21), grooves: state.deciles };
   }
   if (shape === "square") return { ...base, length: state.baseSize };
   const sw = Math.max(7, state.baseSize * 0.05);

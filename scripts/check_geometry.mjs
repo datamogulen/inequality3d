@@ -45,7 +45,7 @@ function toSegs(rows, layered) {
     return { p0: r.p0, p1: r.p1, segs, minLen: r.minLen };
   });
 }
-const stripOpts = { scale, endMargin: 6, length: 180, depth: 38 };
+const stripOpts = { scale, endMargin: 6, length: 180, depth: 38, splitP: 74.7 };
 
 function analyze(name, geoms) {
   let tris = 0, badParts = 0, negVol = 0;
