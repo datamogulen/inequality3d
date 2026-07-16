@@ -12,6 +12,7 @@
   "type": "module",
   "dependencies": {
     "opentype.js": "^2.0.0",
+    "qrcode-generator": "^2.0.4",
     "three": "^0.185.1"
   },
   "private": true

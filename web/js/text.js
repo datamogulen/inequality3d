@@ -66,6 +66,11 @@ function translateShape(s, dx, dy) {
   s.holes.forEach(move);
 }
 
+// Flytta färdiga shapes (t.ex. för att lämna plats åt QR-zon).
+export function translateShapes(shapes, dx, dy) {
+  for (const s of shapes) translateShape(s, dx, dy);
+}
+
 // En rad, centrerad kring origo. { shapes, width, height }.
 export function textShapes(font, text, sizeMm, mirror = true) {
   const { shapes, box } = lineShapes(font, text, sizeMm, mirror);

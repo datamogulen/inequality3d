@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import opentypePkg from "opentype.js";
 const parseFont = opentypePkg.parse;
-import { buildStrip, buildSquare, buildSpiral, buildPlinth, buildInlay, trisToGeometry } from "../web/js/geometry.js";
+import { buildStrip, buildSquare, buildSpiral, buildPlinth, buildInlay, qrInlayTris, trisToGeometry } from "../web/js/geometry.js";
 import { textShapes, textBlock } from "../web/js/text.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -27,12 +27,25 @@ const top = brackets.filter((b) => b.p0 >= 99);
 const share = top.reduce((s, b) => s + (b.p1 - b.p0), 0);
 const avg = top.reduce((s, b) => s + b.v * (b.p1 - b.p0), 0) / share;
 const merged = [...main, { p0: 99, p1: 100, v: avg, merged: true, minLen: 0.8 }];
-// kumulativ
-let cs = 0;
-const cum = brackets.map((b) => { cs += b.v * (b.p1 - b.p0) / 100; return { p0: b.p0, p1: b.p1, v: cs }; });
 
 const scale = 1 / 5000;
-const stripOpts = { scale, clampMm: 90, endMargin: 6, length: 180, depth: 28 };
+const clampMm = 90;
+// segmentstaplar: enkelt lager + treskikts-test (gov/cons/inv-liknande)
+function toSegs(rows, layered) {
+  return rows.map((r) => {
+    let h = r.v * scale;
+    if (clampMm > 0 && h > clampMm) h = clampMm;
+    const segs = layered
+      ? [
+          { part: "gov", z0: 0, z1: h * 0.15 },
+          { part: "cons", z0: h * 0.15, z1: h * 0.6 },
+          { part: "inv", z0: h * 0.6, z1: h },
+        ]
+      : [{ part: "graph", z0: 0, z1: h }];
+    return { p0: r.p0, p1: r.p1, segs, minLen: r.minLen };
+  });
+}
+const stripOpts = { scale, endMargin: 6, length: 180, depth: 38 };
 
 function analyze(name, geoms) {
   let tris = 0, badParts = 0, negVol = 0;
@@ -100,35 +113,65 @@ function bottom(plate) {
   return blk;
 }
 
-// remsa med fenor + nummer
+// QR-testmoduler (schackmönster ≈ QR)
+function qrTestRects() {
+  const rects = [];
+  const n = 29, mod = 1.1, sz = n * mod, cx = 60, cy = 0;
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    if ((r + c) % 2) continue;
+    rects.push({ x0: cx - sz / 2 + c * mod, x1: cx - sz / 2 + (c + 1) * mod,
+                 y0: cy - sz / 2 + r * mod, y1: cy - sz / 2 + (r + 1) * mod });
+  }
+  return rects;
+}
+
+// remsa: enkla lager, skåror, nummer, medelstreck
 {
-  const built = buildStrip(merged, { ...stripOpts, decileGlyphs: decileGlyphs() });
+  const meanH = brackets.reduce((s, b) => s + b.v * (b.p1 - b.p0), 0) / 100 * scale;
+  const built = buildStrip(toSegs(merged, false), { ...stripOpts, decileGlyphs: decileGlyphs(), meanH });
   const txt = bottom(built.plate);
-  const graph = [trisToGeometry(built.graphTris)];
-  const fins = [trisToGeometry(built.finTris)];
-  const nums = [trisToGeometry(built.numberInlayTris)];
-  const base = buildPlinth(built.plate, txt.shapes);
-  const inlay = buildInlay(txt.shapes);
-  fail += analyze("remsa graf(+fickor)", graph);
-  fail += analyze("remsa fenor", fins);
-  fail += analyze("remsa nummer-inlägg", nums);
-  fail += analyze("remsa botten+gravyr", base);
-  fail += analyze("remsa textinlägg", inlay);
-  writeSTL([...graph, ...fins, ...nums, ...base, ...inlay], join(ROOT, "out", "test_SE_remsa_alla.stl"));
-  writeSTL(graph, join(ROOT, "out", "test_SE_remsa_graf.stl"));
+  const qr = qrTestRects();
+  const base = buildPlinth(built.plate, txt.shapes, qr);
+  const inlay = [...buildInlay(txt.shapes), trisToGeometry(qrInlayTris(qr))];
+  for (const [name, tris] of Object.entries(built.parts)) {
+    fail += analyze(`remsa ${name}`, [trisToGeometry(tris)]);
+  }
+  fail += analyze("remsa botten+gravyr+QR", base);
+  fail += analyze("remsa textinlägg+QR", inlay);
+  const all = Object.values(built.parts).map(trisToGeometry);
+  writeSTL([...all, ...base, ...inlay], join(ROOT, "out", "test_SE_remsa_alla.stl"));
 }
-// kumulativ
+// remsa: tre lager (CO2-liknande) + skuldliknande (negativa)
 {
-  const built = buildStrip(cum, { ...stripOpts, decileGlyphs: decileGlyphs() });
-  fail += analyze("kumulativ graf", [trisToGeometry(built.graphTris)]);
+  const built = buildStrip(toSegs(merged, true), { ...stripOpts, decileGlyphs: decileGlyphs(), meanH: 12 });
+  for (const [name, tris] of Object.entries(built.parts)) {
+    fail += analyze(`lager ${name}`, [trisToGeometry(tris)]);
+  }
+  // skuld: förhöjt nollplan
+  const H0 = 6;
+  const debtRows = merged.map((r, i) => {
+    const v = i < 8 ? -(8 - i) : r.v * scale; // fejka skulder i botten
+    const segs = [];
+    if (v >= 0) segs.push({ part: "graph", z0: 0, z1: Math.min(H0 + v, 90) });
+    else {
+      if (H0 + v > 0) segs.push({ part: "graph", z0: 0, z1: H0 + v });
+      segs.push({ part: "debt", z0: Math.max(0, H0 + v), z1: H0 });
+    }
+    return { p0: r.p0, p1: r.p1, segs, minLen: r.minLen };
+  });
+  const b2 = buildStrip(debtRows, { ...stripOpts, decileGlyphs: decileGlyphs(), meanH: H0 + 4 });
+  for (const [name, tris] of Object.entries(b2.parts)) {
+    fail += analyze(`skuld ${name}`, [trisToGeometry(tris)]);
+  }
 }
-// kvadrat + spiral
+// kvadrat + spiral (mm-höjder)
 {
-  const sq = buildSquare(merged, { scale, clampMm: 90, endMargin: 6, length: 180 });
-  fail += analyze("kvadrat graf", [trisToGeometry(sq.graphTris)]);
+  const mm = merged.map((r) => ({ ...r, v: Math.min(r.v * scale, 90) }));
+  const sq = buildSquare(mm, { endMargin: 6, length: 180 });
+  fail += analyze("kvadrat graf", [trisToGeometry(sq.parts.graph)]);
   fail += analyze("kvadrat botten", buildPlinth(sq.plate, bottom(sq.plate).shapes));
-  const sp = buildSpiral(merged, { scale, clampMm: 90, endMargin: 6, length: 180, spiralWidth: 9, spiralGap: 2.7 });
-  fail += analyze("spiral graf", [trisToGeometry(sp.graphTris)]);
+  const sp = buildSpiral(mm, { endMargin: 6, length: 180, spiralWidth: 9, spiralGap: 2.7 });
+  fail += analyze("spiral graf", [trisToGeometry(sp.parts.graph)]);
   fail += analyze("spiral botten", buildPlinth(sp.plate, bottom(sp.plate).shapes));
 }
 

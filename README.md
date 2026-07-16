@@ -61,15 +61,27 @@ Sidan är självförsörjande (three.js och opentype.js ligger vendorerade i
   1 mm = 50 000 USD, CO₂ 1 mm = 1 ton/år). Enheten står ingraverad i
   botten. Extrema toppar kapas vid en gräns (standard 90 mm; syns i
   etiketten).
-- **Fyra former**, valfri kombination:
-  - *Remsa*: percentil 0–100 längs x, höjd ∝ värde. **Decilgränser** märks
-    med tunna fenor (egen färg) från bas upp till grafhöjd, och **decilnummer
-    1–10 graveras i toppen** (följer terrängen).
-  - *Kumulativ remsa*: viktad kumulativ summa fattigast→rikast (toppar vid
-    medelvärdet) – en fysisk Lorenz-kurva som direkt visar ojämlikheten.
+- **Tre former**, valfri kombination:
+  - *Remsa*: percentil 0–100 längs x, höjd ∝ värde. **Decilgränser** =
+    skåror (mellanrum) och **decilnummer 1–10 graverade i toppen** (följer
+    terrängen). Ett mörkt **medelvärdesstreck** (egen STL) är inbäddat vid
+    medelvärdets höjd – där strecket möter trappan ligger medelpercentilen.
   - *Spiral*: fattigast ytterst, rikast i mitten (arkimedisk spiral).
   - *Kvadrat*: 10 rader × 10 centiler; fattigaste raden närmast,
     rikaste centilen längst bort till höger.
+- **CO₂ i tre lager** (remsan): offentlig konsumtion i botten, privat
+  konsumtion, investeringar överst – tre separata STL:er/färger, per
+  percentil ur WID:s komponenter (`lcfghg`, `lifghg`, `kgfghg`). Väljare:
+  offentlig konsumtion **lika per person** (Chancels benchmark, δ=0) eller
+  **proportionell mot inkomst** (Oxfam/SEI-stil, δ=1).
+- **Förmögenhet med skulder** (option): nollplanet höjs till största
+  skuldens nivå; skulderna blir ett eget rött lager som hänger från
+  nollplanet (djupast vid p0), positiv förmögenhet växer ovanför.
+- **QR-kod på undersidan** (option, standard på): länkar till en infosida
+  per land+mått – `https://hedin.it/i3d/?c=SE&m=co2` → `m.html` med
+  nyckeltal (median/medel/toppandelar/Gini), metodbeskrivning
+  (Chancel-komponenterna, Oxfam-skillnaden) och källor, sv/en.
+  Kort-URL:en kräver `deploy/i3d/index.php` på hedin.it-roten.
 - **Toppupplösning**: hela centiler 0–99, tiondelar 99–99,9 och
   hundradelar 99,9–99,99 + p99,99–100 (118 klasser) från WID.
 - **Toppen som viktat snitt** (standard: topp 1 % av befolkningen; även
@@ -78,9 +90,8 @@ Sidan är självförsörjande (three.js och opentype.js ligger vendorerade i
   riktiga plats och med verklig bas (remsans sista 1 % ≈ 0,9 mm tunn,
   spiralens mittpelare, kvadratens bortre hörn; min 0,8 mm bas för
   utskrift). USA:s topprocent i inkomst blir då 94 mm i stället för
-  2,1 m (snittet av topp 0,01 %) vid 0,5 mm/10 000 USD – modellen
-  skrivs ut i ett stycke. Full detalj (hundradelar) finns kvar för den
-  som vill se hela dramat.
+  2,1 m vid 1 mm = 5 000 USD – modellen skrivs ut i ett stycke. Full
+  detalj (hundradelar) finns kvar för den som vill se hela dramat.
 - **Kapa höjd** finns också kvar som alternativ (kapade staplar plattas
   av och räknas i etiketten).
 - **Bottenplatta**: sticker bara ut i percentil-riktningen (över p100 /
@@ -89,8 +100,9 @@ Sidan är självförsörjande (three.js och opentype.js ligger vendorerade i
   vuxen/person + valuta**, och **skalan** (”1 MM = 5000 USD”) – speglat så
   det läses rättvänt underifrån. Font: **Open Sans Regular** (Apache 2.0).
 - **STL-export i separata delar för flerfärgstryck** (importera ihop i
-  slicern, samma koordinatsystem, sätt färg per del): *graf*, *botten*,
-  *fenor*, *nummer* (decilgravyren) och *text* (bottengravyren). Geometrin
+  slicern, samma koordinatsystem, sätt färg per del): *graf* (eller
+  *offentligt/konsumtion/investeringar* för CO₂, *skuld* för förmögenhet),
+  *medel*, *botten*, *nummer* och *text* (bottengravyr + QR). Geometrin
   är verifierad vattentät (`node scripts/check_geometry.mjs`).
 - **Språk**: svenska/engelska (auto via webbläsaren, växlare i sidofältet,
   `?lang=sv`/`?lang=en` fungerar också). Gravyren följer valt språk.

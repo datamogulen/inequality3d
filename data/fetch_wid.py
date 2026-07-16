@@ -91,6 +91,10 @@ MEASURES = {
     "income": {"sixlet": "aptinc", "age": "992", "pop": "j"},
     "wealth": {"sixlet": "ahweal", "age": "992", "pop": "j"},
     "carbon": {"sixlet": "lpfghg", "age": "999", "pop": "i"},
+    # Chancels komponenter: konsumtion resp. investeringar (offentlig
+    # konsumtion = carbon - carbonCons - carbonInv, klumpsumma i benchmark)
+    "carbonCons": {"sixlet": "lcfghg", "age": "999", "pop": "i"},
+    "carbonInv": {"sixlet": "lifghg", "age": "999", "pop": "i"},
 }
 
 XRATES = ["xlcusp_p0p100_999_i", "xlcusx_p0p100_999_i", "xlceup_p0p100_999_i"]
@@ -176,6 +180,27 @@ def fetch_measure(country, key):
     return {"unit": unit, "years": full_years, "values": values}
 
 
+def fetch_govpc(country):
+    """Offentlig konsumtions fotavtryck per capita (kgfghg) – klumpsumman
+    i Chancels benchmark. Tidsserie per land."""
+    data = api_get(
+        "countries-variables",
+        {"countries": country, "variables": "kgfghg_p0p100_999_i", "years": "all"},
+        f"{country}_govpc",
+    )
+    for varcode, entries in data.items():
+        for entry in entries:
+            cc, payload = next(iter(entry.items()))
+            if cc != country:
+                continue
+            vals = {item["y"]: item["v"] for item in payload.get("values", [])
+                    if item["y"] >= MIN_YEAR and item["v"] is not None}
+            if vals:
+                years = sorted(vals)
+                return {"years": years, "values": [vals[y] for y in years]}
+    return None
+
+
 def fetch_xrates(country):
     data = api_get(
         "countries-variables",
@@ -231,6 +256,11 @@ def main():
         except Exception as e:
             print(f"  {cc}/xrates: FEL {e}")
             country["xrates"] = {}
+        try:
+            country["govFootprint"] = fetch_govpc(cc)
+        except Exception as e:
+            print(f"  {cc}/govpc: FEL {e}")
+            country["govFootprint"] = None
         (OUT / f"wid_{cc}.json").write_text(
             json.dumps(country, separators=(",", ":"))
         )

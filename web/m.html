@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<title>Om modellen – Ojämlikhet i 3D</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="index,follow">
+<style>
+  :root { --bg:#f7f5f0; --panel:#fff; --ink:#26241f; --ink2:#6b675e; --line:#e4e0d6; --accent:#2a78d6; }
+  * { box-sizing: border-box; }
+  body { font: 16px/1.55 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+         color: var(--ink); background: var(--bg); margin: 0; padding: 0 16px 60px; }
+  main { max-width: 720px; margin: 0 auto; }
+  header { display:flex; justify-content: space-between; align-items: baseline; gap: 10px;
+           padding: 18px 0 6px; flex-wrap: wrap; }
+  h1 { font-size: 26px; margin: 0; }
+  h2 { font-size: 19px; margin: 26px 0 8px; }
+  .sub { color: var(--ink2); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+          padding: 14px 18px; margin: 14px 0; }
+  table { border-collapse: collapse; width: 100%; }
+  td, th { text-align: left; padding: 5px 10px 5px 0; border-bottom: 1px dashed var(--line); }
+  td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  .btn { font: inherit; font-size: 13px; padding: 4px 11px; border: 1px solid var(--line);
+         border-radius: 7px; background: var(--bg); color: var(--ink); cursor: pointer; }
+  a { color: var(--accent); }
+  .pill { display:inline-block; background:var(--bg); border:1px solid var(--line);
+          border-radius: 999px; padding: 1px 10px; font-size: 13px; margin: 0 4px 4px 0; }
+  .note { font-size: 14px; color: var(--ink2); }
+  #err { color: #a33; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 id="title">…</h1>
+    <button class="btn" id="langBtn">English</button>
+  </header>
+  <div class="sub" id="subtitle"></div>
+  <div id="err"></div>
+
+  <div class="card" id="statsCard" style="display:none">
+    <h2 id="statsH" style="margin-top:0"></h2>
+    <table id="stats"></table>
+    <p class="note" id="statsNote"></p>
+  </div>
+
+  <div class="card" id="compCard" style="display:none">
+    <h2 id="compH" style="margin-top:0"></h2>
+    <table id="comp"></table>
+    <p class="note" id="compNote"></p>
+  </div>
+
+  <div id="method"></div>
+
+  <div class="card">
+    <h2 id="srcH" style="margin-top:0"></h2>
+    <ul id="sources"></ul>
+  </div>
+
+  <p><a id="appLink" href="./">→</a></p>
+</main>
+
+<script type="module">
+const P = new URLSearchParams(location.search);
+const CODE = (P.get("c") || "SE").toUpperCase().slice(0, 2);
+const M = { inc: "income", wea: "wealth", co2: "carbon" }[P.get("m") || "inc"] || "income";
+let LANG = P.get("lang") || localStorage.getItem("ineq3d_lang") ||
+  ((navigator.language || "en").toLowerCase().startsWith("sv") ? "sv" : "en");
+if (LANG !== "sv" && LANG !== "en") LANG = "en";
+
+const T = {
+  sv: {
+    title: { income: "Inkomstfördelning", wealth: "Förmögenhetsfördelning", carbon: "CO₂e-avtryck per person" },
+    subtitle: (c, y) => `${c} · den fysiska modellen visar percentil för percentil, år ${y}`,
+    statsH: (y) => `Nyckeltal ${y}`,
+    rows: {
+      median: "Median (p50)", mean: "Medelvärde", p90: "Percentil 90", p99: "Percentil 99",
+      top10: "Topp 10 % – andel av totalen", top1: "Topp 1 % – andel av totalen", gini: "Gini-koefficient",
+    },
+    statsNote: "Percentilvärden är gruppgenomsnitt. Inkomst = nationalinkomst före skatt per vuxen (equal-split); förmögenhet = nettoförmögenhet per vuxen; CO₂e = personligt växthusgasavtryck per person. Penningvärden i PPP-USD.",
+    compH: (y) => `Avtryckets tre delar ${y} (medel, ton CO₂e/person)`,
+    compRows: { gov: "Offentlig konsumtion", cons: "Privat konsumtion", inv: "Investeringar (kapitalägande)" },
+    compNote: "I appen kan de tre delarna skrivas ut som lager i olika färger. Offentlig konsumtion fördelas lika per person i Chancels huvudscenario; Oxfam/SEI fördelar i stället hela nationens konsumtionsutsläpp proportionellt mot inkomst.",
+    srcH: "Källor & läs mer",
+    appLink: "← Till den interaktiva 3D-modellen (hedin.it/inequality3d)",
+    langBtn: "English",
+    method: {
+      income: `<h2>Vad modellen visar</h2>
+<p>Varje stapel är genomsnittsinkomsten i en percentil av den vuxna befolkningen,
+sorterad från lägst (percentil 1) till högst (percentil 100), med finare upplösning i
+toppen. Måttet är <b>nationalinkomst före skatt per vuxen</b> från World Inequality
+Database (WID) – det inkluderar kapitalinkomster och är bredare än taxerad förvärvsinkomst.
+Par delar lika ("equal-split"). Skåror markerar deciler; det mörka strecket ligger på
+<b>medelvärdets</b> höjd – notera hur långt över medianen det ligger.</p>
+<p>I 3D-utskriften är höjdskalan fast (t.ex. 1 mm = 5 000 USD, står i botten), så
+modeller från olika länder kan jämföras direkt. Toppen (rikaste 1 %) visas som gruppens
+viktade genomsnitt för att modellen ska gå att skriva ut – annars vore den meterhög.</p>
+<p>Som alternativ källa finns Världsbankens PIP (survey-baserad disponibel inkomst/konsumtion)
+– den ger lägre toppar eftersom enkäter sällan fångar de rikaste.</p>`,
+      wealth: `<h2>Vad modellen visar</h2>
+<p>Varje stapel är genomsnittlig <b>nettoförmögenhet per vuxen</b> (tillgångar minus
+skulder) i en percentil, från lägst till högst, från World Inequality Database.
+De lägsta percentilerna är ofta <i>negativa</i> (skulder överstiger tillgångarna) –
+i appen kan skulderna visas som ett eget rött lager under ett förhöjt nollplan.</p>
+<p>Förmögenhet är mycket ojämnare fördelad än inkomst: medianen är ofta bara en bråkdel
+av medelvärdet (det mörka strecket). Höjdskalan är fast (t.ex. 1 mm = 50 000 USD).</p>`,
+      carbon: `<h2>Vad modellen visar</h2>
+<p>Varje stapel är det genomsnittliga <b>växthusgasavtrycket per person</b> (ton CO₂e/år)
+i en percentil, sorterat från lägst till högst avtryck. Datat är Lucas Chancels
+fördelningar (WID), som kombinerar nationalräkenskaper, miljö-input-output-tabeller
+och förmögenhetsdata. Avtrycket är <b>konsumtionsbaserat</b> (inkluderar utsläpp
+inbäddade i import, exkluderar export) och består av tre delar:</p>
+<p><b>1. Privat konsumtion</b> – fördelas efter inkomst med landsspecifik elasticitet.<br>
+<b>2. Offentlig konsumtion</b> – fördelas lika per person (klumpsumma) i huvudscenariot;
+Oxfam/SEI fördelar i stället efter inkomst.<br>
+<b>3. Investeringar</b> – utsläpp från kapitalbildning, fördelade i proportion till
+<i>förmögenhet</i>: den som äger x % av kapitalet tillskrivs x % av investeringsutsläppen.
+Det är denna del som dominerar toppens enorma avtryck.</p>
+<p>WID bedömer själva datakvaliteten för fördelningarna som låg – tolka toppen som
+storleksordning snarare än exakt värde. I 3D-utskriften är skalan fast
+(1 mm = 1 ton CO₂e/år).</p>`,
+    },
+    sources: {
+      income: [
+        ["https://wid.world/", "World Inequality Database (WID.world)"],
+        ["https://wid.world/methodology/", "WID – metodologi (DINA)"],
+        ["https://pip.worldbank.org/", "Världsbanken – Poverty and Inequality Platform"],
+        ["https://wir2022.wid.world/", "World Inequality Report 2022"],
+      ],
+      wealth: [
+        ["https://wid.world/", "World Inequality Database (WID.world)"],
+        ["https://wid.world/methodology/", "WID – metodologi (DINA)"],
+        ["https://wir2022.wid.world/chapter-3/", "World Inequality Report 2022 – kapitlet om förmögenhet"],
+      ],
+      carbon: [
+        ["https://www.nature.com/articles/s41893-022-00955-z", "Chancel (2022), “Global carbon inequality over 1990–2019”, Nature Sustainability"],
+        ["https://wid.world/www-site/uploads/2021/10/Chancel2022GlobalCarbon-main.pdf", "Chancel – working paper med full metodbeskrivning"],
+        ["https://wid.world/news-article/global-inequalities-in-ownership-based-carbon-footprints-over-2010-2022/", "Chancel & Rehm – ägandebaserade avtryck 2010–2022"],
+        ["https://www.oxfamfrance.org/app/uploads/2023/11/Methodology-Note_Climate-Equality_en-anglais.pdf", "Oxfam (2023) – metodnot, Climate Equality"],
+        ["https://www.sei.org/features/qa-income-inequality-emissionsinequality/".replace("emissionsinequality","emissions-inequality"), "SEI – Q&A om utsläppsojämlikhet"],
+      ],
+    },
+  },
+  en: {
+    title: { income: "Income distribution", wealth: "Wealth distribution", carbon: "CO₂e footprint per person" },
+    subtitle: (c, y) => `${c} · the physical model shows percentile by percentile, year ${y}`,
+    statsH: (y) => `Key figures ${y}`,
+    rows: {
+      median: "Median (p50)", mean: "Mean", p90: "Percentile 90", p99: "Percentile 99",
+      top10: "Top 10% – share of total", top1: "Top 1% – share of total", gini: "Gini coefficient",
+    },
+    statsNote: "Percentile values are group averages. Income = pre-tax national income per adult (equal-split); wealth = net wealth per adult; CO₂e = personal greenhouse-gas footprint per person. Money in PPP USD.",
+    compH: (y) => `The three components of the footprint ${y} (mean, tonnes CO₂e/person)`,
+    compRows: { gov: "Public consumption", cons: "Private consumption", inv: "Investments (capital ownership)" },
+    compNote: "In the app the three components can be printed as layers in different colours. Public consumption is split equally per person in Chancel's benchmark; Oxfam/SEI instead allocate the nation's entire consumption emissions in proportion to income.",
+    srcH: "Sources & further reading",
+    appLink: "← To the interactive 3D model (hedin.it/inequality3d)",
+    langBtn: "Svenska",
+    method: {
+      income: `<h2>What the model shows</h2>
+<p>Each bar is the average income of one percentile of the adult population, sorted from
+lowest (percentile 1) to highest (percentile 100), with finer resolution at the top. The
+measure is <b>pre-tax national income per adult</b> from the World Inequality Database
+(WID) – it includes capital income and is broader than taxable earnings. Couples split
+equally. Grooves mark deciles; the dark stripe sits at the height of the <b>mean</b> –
+note how far above the median it lies.</p>
+<p>In the 3D print the height scale is fixed (e.g. 1 mm = 5,000 USD, engraved underneath),
+so models from different countries compare directly. The top 1% is shown as the group's
+weighted average to keep the model printable – otherwise it would be metres tall.</p>
+<p>The World Bank's PIP (survey-based disposable income/consumption) is available as an
+alternative source – it yields much lower tops, as surveys rarely capture the richest.</p>`,
+      wealth: `<h2>What the model shows</h2>
+<p>Each bar is the average <b>net wealth per adult</b> (assets minus debts) in one
+percentile, lowest to highest, from the World Inequality Database. The lowest percentiles
+are often <i>negative</i> (debts exceed assets) – the app can show debt as a separate red
+layer below a raised zero plane.</p>
+<p>Wealth is far more unequally distributed than income: the median is often a fraction
+of the mean (the dark stripe). The height scale is fixed (e.g. 1 mm = 50,000 USD).</p>`,
+      carbon: `<h2>What the model shows</h2>
+<p>Each bar is the average <b>greenhouse-gas footprint per person</b> (tonnes CO₂e/yr) in
+one percentile, sorted from lowest to highest footprint. The data are Lucas Chancel's
+distributions (WID), combining national accounts, environmental input-output tables and
+wealth data. The footprint is <b>consumption-based</b> (includes emissions embedded in
+imports, excludes exports) and has three components:</p>
+<p><b>1. Private consumption</b> – allocated by income with a country-specific elasticity.<br>
+<b>2. Public consumption</b> – split equally per person (lump-sum) in the benchmark;
+Oxfam/SEI instead allocate by income.<br>
+<b>3. Investments</b> – emissions from capital formation, attributed in proportion to
+<i>wealth</i>: owning x% of the capital stock attributes x% of investment emissions.
+This component dominates the enormous footprints at the top.</p>
+<p>WID itself rates the data quality of these distributions as low – read the top as an
+order of magnitude rather than an exact value. In the 3D print the scale is fixed
+(1 mm = 1 tonne CO₂e/yr).</p>`,
+    },
+    sources: {
+      income: [
+        ["https://wid.world/", "World Inequality Database (WID.world)"],
+        ["https://wid.world/methodology/", "WID – methodology (DINA)"],
+        ["https://pip.worldbank.org/", "World Bank – Poverty and Inequality Platform"],
+        ["https://wir2022.wid.world/", "World Inequality Report 2022"],
+      ],
+      wealth: [
+        ["https://wid.world/", "World Inequality Database (WID.world)"],
+        ["https://wid.world/methodology/", "WID – methodology (DINA)"],
+        ["https://wir2022.wid.world/chapter-3/", "World Inequality Report 2022 – wealth chapter"],
+      ],
+      carbon: [
+        ["https://www.nature.com/articles/s41893-022-00955-z", "Chancel (2022), “Global carbon inequality over 1990–2019”, Nature Sustainability"],
+        ["https://wid.world/www-site/uploads/2021/10/Chancel2022GlobalCarbon-main.pdf", "Chancel – working paper with full methodology"],
+        ["https://wid.world/news-article/global-inequalities-in-ownership-based-carbon-footprints-over-2010-2022/", "Chancel & Rehm – ownership-based footprints 2010–2022"],
+        ["https://www.oxfamfrance.org/app/uploads/2023/11/Methodology-Note_Climate-Equality_en-anglais.pdf", "Oxfam (2023) – methodology note, Climate Equality"],
+        ["https://www.sei.org/features/qa-income-inequality-emissions-inequality/", "SEI – Q&A on emissions inequality"],
+      ],
+    },
+  },
+};
+
+const $ = (id) => document.getElementById(id);
+
+function fmtMoney(v, lang) {
+  const loc = lang === "sv" ? "sv-SE" : "en-US";
+  if (Math.abs(v) >= 1e6) return (v / 1e6).toLocaleString(loc, { maximumFractionDigits: 2 }) + " M USD";
+  return Math.round(v).toLocaleString(loc) + " USD";
+}
+function fmtVal(v, measure, lang) {
+  if (measure === "carbon") return v.toLocaleString(lang === "sv" ? "sv-SE" : "en-US", { maximumFractionDigits: 1 }) + " t";
+  return fmtMoney(v, lang);
+}
+
+// Gini ur percentilklasser (Lorenz-trapetser), negativa golvas på 0
+function gini(brackets) {
+  const rows = brackets.map((b) => ({ w: (b.p1 - b.p0) / 100, v: Math.max(0, b.v) }));
+  const total = rows.reduce((s, r) => s + r.v * r.w, 0);
+  if (total <= 0) return null;
+  let cum = 0, area = 0;
+  for (const r of rows) {
+    const l0 = cum / total;
+    cum += r.v * r.w;
+    const l1 = cum / total;
+    area += ((l0 + l1) / 2) * r.w;
+  }
+  return 1 - 2 * area;
+}
+
+async function render() {
+  const tr = T[LANG];
+  document.documentElement.lang = LANG;
+  $("langBtn").textContent = tr.langBtn;
+  $("appLink").textContent = tr.appLink;
+  $("appLink").href = "./?lang=" + LANG;
+  $("srcH").textContent = tr.srcH;
+  $("sources").innerHTML = tr.sources[M].map(([u, l]) => `<li><a href="${u}">${l}</a></li>`).join("");
+  $("method").innerHTML = tr.method[M];
+  document.title = tr.title[M] + " – Inequality in 3D";
+
+  let idx, cd;
+  try {
+    idx = await (await fetch("data/index.json")).json();
+    cd = await (await fetch(`data/wid_${CODE}.json`)).json();
+  } catch {
+    $("err").textContent = LANG === "sv" ? `Hittar ingen data för landskoden ${CODE}.` : `No data found for country code ${CODE}.`;
+    $("title").textContent = tr.title[M];
+    return;
+  }
+  const cName = LANG === "sv" ? cd.nameSv : cd.nameEn;
+  $("title").textContent = `${tr.title[M]}: ${cName}`;
+
+  const m = cd.measures[M];
+  if (!m) { $("err").textContent = "…"; return; }
+  const year = m.years[m.years.length - 1];
+  $("subtitle").textContent = tr.subtitle(cName, year);
+
+  const yi = m.years.indexOf(year);
+  const ppp = M === "carbon" ? 1 : cd.xrates.pppUsd.lcuPer;
+  const brackets = [];
+  idx.brackets.forEach(([p0, p1], i) => {
+    const v = m.values[i]?.[yi];
+    if (v != null) brackets.push({ p0, p1, v: v / ppp });
+  });
+  const w = (b) => (b.p1 - b.p0);
+  const tw = brackets.reduce((s, b) => s + w(b), 0);
+  const mean = brackets.reduce((s, b) => s + b.v * w(b), 0) / tw;
+  const at = (p) => brackets.find((b) => b.p0 <= p && b.p1 > p)?.v;
+  const shareAbove = (p) => brackets.filter((b) => b.p0 >= p).reduce((s, b) => s + Math.max(0, b.v) * w(b), 0) /
+    brackets.reduce((s, b) => s + Math.max(0, b.v) * w(b), 0);
+  const g = gini(brackets);
+
+  const rows = [
+    [tr.rows.median, fmtVal(at(50) ?? 0, M, LANG)],
+    [tr.rows.mean, fmtVal(mean, M, LANG)],
+    [tr.rows.p90, fmtVal(at(90) ?? 0, M, LANG)],
+    [tr.rows.p99, fmtVal(at(99.5) ?? 0, M, LANG)],
+    [tr.rows.top10, (shareAbove(90) * 100).toFixed(1) + " %"],
+    [tr.rows.top1, (shareAbove(99) * 100).toFixed(1) + " %"],
+    [tr.rows.gini, g != null ? g.toFixed(2) : "–"],
+  ];
+  $("stats").innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
+  $("statsH").textContent = tr.statsH(year);
+  $("statsNote").textContent = tr.statsNote;
+  $("statsCard").style.display = "block";
+
+  if (M === "carbon" && cd.measures.carbonCons && cd.measures.carbonInv && cd.govFootprint) {
+    const comp = (key) => {
+      const mm = cd.measures[key];
+      const yy = mm.years.includes(year) ? mm.years.indexOf(year) : mm.years.length - 1;
+      let s = 0, ww = 0;
+      idx.brackets.forEach(([p0, p1], i) => {
+        const v = mm.values[i]?.[yy];
+        if (v != null) { s += v * (p1 - p0); ww += (p1 - p0); }
+      });
+      return s / ww;
+    };
+    const gi = cd.govFootprint.years.indexOf(
+      cd.govFootprint.years.includes(year) ? year : cd.govFootprint.years[cd.govFootprint.years.length - 1]);
+    const gov = cd.govFootprint.values[gi];
+    const consTotal = comp("carbonCons");
+    const inv = comp("carbonInv");
+    const rows2 = [
+      [tr.compRows.gov, gov.toFixed(1)],
+      [tr.compRows.cons, Math.max(0, consTotal - gov).toFixed(1)],
+      [tr.compRows.inv, inv.toFixed(1)],
+    ];
+    $("comp").innerHTML = rows2.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
+    $("compH").textContent = tr.compH(year);
+    $("compNote").textContent = tr.compNote;
+    $("compCard").style.display = "block";
+  }
+}
+
+$("langBtn").addEventListener("click", () => {
+  LANG = LANG === "sv" ? "en" : "sv";
+  localStorage.setItem("ineq3d_lang", LANG);
+  render();
+});
+render();
+</script>
+</body>
+</html>

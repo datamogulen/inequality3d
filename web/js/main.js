@@ -1,28 +1,32 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
-import { loadIndex, loadCountry, getSeries, MEASURE_INFO } from "./data.js";
-import { buildStrip, buildSpiral, buildSquare, buildPlinth, buildInlay, trisToGeometry } from "./geometry.js";
-import { loadFont, textShapes, textBlock } from "./text.js";
+import { loadIndex, loadCountry, getSeries, getComponent, getGovFootprint, MEASURE_INFO } from "./data.js";
+import {
+  buildStrip, buildSpiral, buildSquare, buildPlinth, buildInlay,
+  qrInlayTris, trisToGeometry, INLAY_H,
+} from "./geometry.js";
+import { loadFont, textShapes, textBlock, translateShapes } from "./text.js";
 import { exportSTL } from "./stl.js";
 import { t, getLang, toggleLang, applyStatic, countryName } from "./i18n.js";
+import qrcode from "../vendor/qrcode.mjs";
 
 // ---------- konstanter ----------
 
-const STATE_V = 2; // bumpa för att nollställa gamla skalor/storlekar i localStorage
+const STATE_V = 3; // bumpa för att nollställa inaktuella val i localStorage
 const PALETTE = ["#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e34948", "#e87ba4", "#eb6834"];
-const COL_BASE = 0xd9d2c2, COL_FIN = 0x2f2f2f, COL_TEXT = 0xd9a021, COL_NUM = 0x2f2f2f;
-
+const PART_COLORS = {
+  base: 0xd9d2c2, text: 0xd9a021, numbers: 0x2f2f2f, mean: 0x1c1c1c,
+  gov: 0x9a9a92, inv: 0x584a9e, debt: 0xc23434,
+};
 // Fasta "snygga" enheter per mått – 1 mm betyder alltid lika mycket.
 const MEASURE = {
-  income: { scale: 1 / 5000, per: 5000, unit: "USD" },
-  wealth: { scale: 1 / 50000, per: 50000, unit: "USD" },
-  carbon: { scale: 1, per: 1, unit: "tCO2" },
+  income: { scale: 1 / 5000, unit: "USD" },
+  wealth: { scale: 1 / 50000, unit: "USD" },
+  carbon: { scale: 1, unit: "tCO2" },
 };
 const CUT_LABEL = { "99": { sv: "1 %", en: "1%" }, "99.9": { sv: "0,1 %", en: "0.1%" }, "99.99": { sv: "0,01 %", en: "0.01%" } };
-// former: strip & cum använder buildStrip
-const BUILDERS = { strip: buildStrip, cum: buildStrip, spiral: buildSpiral, square: buildSquare };
-const STRIP_SHAPES = new Set(["strip", "cum"]);
+const M_SHORT = { income: "inc", wealth: "wea", carbon: "co2" }; // för QR-url
 
 // ---------- tillstånd ----------
 
@@ -38,14 +42,21 @@ const state = {
   baseSize: 180,
   clampMm: 90,
   cutTop: 99,
-  deciles: true, // fenor + nummer på remsan
+  deciles: true,   // skåror + graverade nummer (remsa)
+  govMode: "flat", // "flat" = Chancel (lika/person), "income" = Oxfam
+  debt: false,     // förmögenhet: skuldlager under förhöjt nollplan
+  qr: true,        // QR-kod på undersidan
 };
 try {
   const saved = JSON.parse(localStorage.getItem("ineq3d") || "{}");
   if (saved.v === STATE_V) Object.assign(state, saved);
-  else { // migrera: behåll val men nollställ skalor/storlek
-    for (const k of ["measure", "currency", "source", "year", "countries", "shapes", "cutTop"]) {
+  else {
+    for (const k of ["measure", "currency", "source", "year", "countries", "cutTop"]) {
       if (saved[k] !== undefined) state[k] = saved[k];
+    }
+    if (Array.isArray(saved.shapes)) {
+      const sh = saved.shapes.filter((s) => ["strip", "spiral", "square"].includes(s));
+      if (sh.length) state.shapes = sh;
     }
   }
 } catch { /* ignorera trasig lagring */ }
@@ -105,73 +116,151 @@ renderer.setAnimationLoop(() => {
   labelRenderer.render(scene, camera);
 });
 
-// ---------- data-transformer ----------
+// ---------- data → segment ----------
 
-function mergeTop(brackets, level) {
-  if (!level) return brackets;
-  const main = brackets.filter((b) => b.p1 <= level);
-  const top = brackets.filter((b) => b.p0 >= level);
-  if (!top.length) return brackets;
-  const share = top.reduce((s, b) => s + (b.p1 - b.p0), 0);
-  const avg = top.reduce((s, b) => s + b.v * (b.p1 - b.p0), 0) / share;
-  main.push({ p0: level, p1: 100, v: avg, merged: true, minLen: 0.8 });
+// Viktat snitt av toppen (per fält) → en klass. rows: [{p0,p1,...fält}]
+function mergeTopRows(rows, level, fields) {
+  if (!level) return rows;
+  const main = rows.filter((r) => r.p1 <= level);
+  const top = rows.filter((r) => r.p0 >= level);
+  if (!top.length) return rows;
+  const share = top.reduce((s, r) => s + (r.p1 - r.p0), 0);
+  const merged = { p0: level, p1: 100, merged: true, minLen: 0.8 };
+  for (const f of fields) {
+    merged[f] = top.reduce((s, r) => s + (r[f] ?? 0) * (r.p1 - r.p0), 0) / share;
+  }
+  main.push(merged);
   return main;
 }
 
-// kumulativ (viktad) summa fattigast→rikast; toppar vid medelvärdet
-function cumulative(brackets) {
-  const sorted = [...brackets].sort((a, b) => a.p0 - b.p0);
-  let s = 0;
-  return sorted.map((b) => {
-    s += b.v * (b.p1 - b.p0) / 100;
-    return { p0: b.p0, p1: b.p1, v: s };
+// Rader {p0,p1,fält...} → segmentstaplar {p0,p1,segs:[{part,z0,z1}]} i mm.
+// layers: [{part, field}] i stapelordning nerifrån. Klipper vid clampMm
+// (proportionellt så sammansättningen bevaras).
+function rowsToSegs(rows, layers, scale, clampMm, baseZ = () => 0) {
+  return rows.map((r) => {
+    let z = baseZ(r);
+    const raw = [];
+    for (const l of layers) {
+      const h = Math.max(0, (r[l.field] ?? 0) * scale);
+      if (h > 1e-6) raw.push({ part: l.part, z0: z, z1: z + h });
+      z += h;
+    }
+    let clamped = false;
+    if (clampMm > 0 && z > clampMm) {
+      const f = clampMm / z;
+      let zz = 0;
+      for (const s of raw) {
+        const h = (s.z1 - s.z0) * f;
+        s.z0 = zz; s.z1 = zz + h; zz += h;
+      }
+      clamped = true;
+    }
+    return { p0: r.p0, p1: r.p1, segs: raw, merged: r.merged, minLen: r.minLen, clamped };
   });
 }
 
-// ---------- geometri per modell ----------
+// CO2: rader med gov/cons/inv (Chancel- eller Oxfam-allokering av gov)
+function carbonRows(countryData, series) {
+  const cons = getComponent(countryData, "carbonCons", series.year);
+  const inv = getComponent(countryData, "carbonInv", series.year);
+  const govpc = getGovFootprint(countryData, series.year);
+  if (!cons || !inv || govpc == null) return null;
+  // inkomstkvot för Oxfam-läget (y_p / ȳ, valutaoberoende)
+  let incomeRatio = null;
+  if (state.govMode === "income") {
+    const inc = getSeries(countryData, "wid", "income", series.year, "lcu");
+    if (inc) {
+      incomeRatio = new Map(inc.brackets.map((b) => [`${b.p0}|${b.p1}`, b.vRaw / inc.mean]));
+    }
+  }
+  const rows = [];
+  for (const b of series.brackets) {
+    const key = `${b.p0}|${b.p1}`;
+    const c = cons.map.get(key), i = inv.map.get(key);
+    if (c == null || i == null) continue;
+    const ratio = incomeRatio ? (incomeRatio.get(key) ?? 1) : 1;
+    rows.push({
+      p0: b.p0, p1: b.p1,
+      gov: Math.max(0, govpc * ratio),
+      cons: Math.max(0, c - govpc),
+      inv: Math.max(0, i),
+    });
+  }
+  return rows.length > 100 ? rows : null; // kräv nästan full täckning
+}
+
+// ---------- modellbygge ----------
 
 function shapeOpts(shape) {
   const scale = state.scales[state.measure];
   const base = { scale, clampMm: state.clampMm, endMargin: 6 };
-  if (STRIP_SHAPES.has(shape)) {
-    return { ...base, length: state.baseSize, depth: Math.max(26, state.baseSize * 0.16) };
+  if (shape === "strip") {
+    return { ...base, length: state.baseSize, depth: Math.max(30, state.baseSize * 0.21) };
   }
   if (shape === "square") return { ...base, length: state.baseSize };
-  // spiral
   const sw = Math.max(7, state.baseSize * 0.05);
   return { ...base, length: state.baseSize, spiralWidth: sw, spiralGap: sw * 0.3 };
 }
 
-// bottentextens tre rader (versaler), skalade att passa plattan
-function bottomText(font, plate, cName) {
+function qrModules(code, plate) {
+  if (!state.qr) return null;
+  const url = `https://hedin.it/i3d/?c=${code}&m=${M_SHORT[state.measure]}`;
+  const qr = qrcode(0, "M");
+  qr.addData(url);
+  qr.make();
+  const n = qr.getModuleCount();
+  const quiet = 2;
+  const availD = (plate.kind === "circle" ? plate.r * 1.1 : plate.d) - 4;
+  const side = Math.min(availD, 36);
+  const mod = side / (n + 2 * quiet);
+  if (mod < 0.8) return null; // för litet för att skrivas/skannas
+  const sz = mod * n;
+  // placeras vid högra änden (p100); speglad i x (läses underifrån)
+  const cx = (plate.kind === "circle" ? plate.r * 0.45 : plate.w / 2 - sz / 2 - quiet * mod - 2);
+  const cy = 0;
+  const rects = [];
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      if (!qr.isDark(r, c)) continue;
+      const fc = n - 1 - c; // spegla kolumner → läsbar underifrån
+      rects.push({
+        x0: cx - sz / 2 + fc * mod, x1: cx - sz / 2 + (fc + 1) * mod + 0.001,
+        y0: cy - sz / 2 + (n - 1 - r) * mod, y1: cy - sz / 2 + (n - r) * mod + 0.001,
+      });
+    }
+  }
+  return { rects, size: sz + 2 * quiet * mod, cx, url };
+}
+
+// bottentextens tre rader, skalade att passa plattan (minus QR-zon)
+function bottomText(font, plate, cName, qrZone) {
   const m = MEASURE[state.measure];
   const cur = state.currency === "ppp" ? "PPP" : state.currency === "mer" ? "USD" : t("lcu_short");
-  const perNoun = t("per_" + state.measure);
-  const measShort = t("short_" + state.measure);
   const curTag = MEASURE_INFO[state.measure].isMoney ? " " + cur : "";
   const unit = state.measure === "carbon" ? t("unit_tco2") : (state.currency === "lcu" ? t("lcu_short") : "USD");
-  const niceNum = m.per >= 1000 ? m.per.toLocaleString("sv-SE").replace(/ /g, " ") : String(m.per);
-  const perMm = (1 / state.scales[state.measure]);
-  const perMmNum = perMm >= 1000 ? Math.round(perMm).toLocaleString("sv-SE").replace(/ /g, " ") : String(+perMm.toFixed(2));
+  const perMm = 1 / state.scales[state.measure];
+  const perMmNum = perMm >= 1000 ? Math.round(perMm).toLocaleString("sv-SE") : String(+perMm.toFixed(2));
   const lines = [
     cName,
-    `${measShort}/${perNoun}${curTag}`,
+    `${t("short_" + state.measure)}/${t("per_" + state.measure)}${curTag}`,
     `1 MM = ${perMmNum} ${unit}`,
   ];
   const isRect = plate.kind !== "circle";
-  const availW = isRect ? plate.w - 12 : plate.r * 1.5;
+  const qrW = qrZone ? qrZone.size + 4 : 0;
+  const availW = (isRect ? plate.w - 14 : plate.r * 1.5) - qrW;
   const availH = isRect ? Math.min(plate.d - 5, plate.w * 0.5) : plate.r * 1.4;
-  // storlek styrd av höjd (3 rader), sen krympt om bredden inte räcker
   let size = Math.min(7, (availH - 2 * 1.4) / 3);
   const mk = (sz) => textBlock(font, lines.map((tx, i) => ({ text: tx, size: i === 0 ? sz * 1.1 : sz })), true, sz * 0.35);
   let blk = mk(size);
   if (blk.width > availW && blk.width > 0) { size *= availW / blk.width; blk = mk(size); }
+  // QR ligger vid +x-änden av plattan → centrera texten i den fria delen
+  // [−w/2, w/2 − qrW], dvs. förskjut blocket −qrW/2.
+  if (qrZone) translateShapes(blk.shapes, -qrW / 2, 0);
   return blk;
 }
 
-// decilnummer-glyfer (ospeglade, för toppgravyr på remsan)
 function decileGlyphs(font, depth) {
-  const size = Math.min(6, depth * 0.32);
+  const size = Math.min(6, depth * 0.28);
   const out = [];
   for (let k = 0; k < 10; k++) {
     const ts = textShapes(font, String(k + 1), size, false);
@@ -184,24 +273,98 @@ function makeModel(countryData, shape, font) {
   const series = getSeries(countryData, state.source, state.measure, state.year, state.currency);
   if (!series) return null;
   const opts = shapeOpts(shape);
+  const scale = state.scales[state.measure];
+  const notes = [];
 
-  // data: kumulativ eller ihopslagen topp
-  const brackets = shape === "cum" ? cumulative(series.brackets) : mergeTop(series.brackets, state.cutTop);
-
-  if (STRIP_SHAPES.has(shape) && state.deciles) opts.decileGlyphs = decileGlyphs(font, opts.depth);
-  const built = BUILDERS[shape](brackets, opts);
+  let built;
+  let meanH = series.mean * scale;
+  if (shape === "strip") {
+    let bracketRows;
+    if (state.measure === "carbon") {
+      const rows = carbonRows(countryData, series);
+      if (rows) {
+        const merged = mergeTopRows(rows, state.cutTop, ["gov", "cons", "inv"]);
+        // Oxfam-läget ändrar summan per percentil; medel är oförändrat
+        bracketRows = rowsToSegs(merged, [
+          { part: "gov", field: "gov" },
+          { part: "cons", field: "cons" },
+          { part: "inv", field: "inv" },
+        ], scale, state.clampMm);
+        notes.push("layers");
+      }
+    } else if (state.measure === "wealth" && state.debt) {
+      const rows = mergeTopRows(
+        series.brackets.map((b) => ({ p0: b.p0, p1: b.p1, v: b.vRaw })),
+        state.cutTop, ["v"]
+      );
+      const minV = Math.min(0, ...rows.map((r) => r.v));
+      const H0 = -minV * scale; // nollplanets höjd
+      bracketRows = rows.map((r) => {
+        const segs = [];
+        if (r.v >= 0) {
+          if (H0 + r.v * scale > 1e-6) segs.push({ part: "graph", z0: 0, z1: H0 + r.v * scale });
+        } else {
+          const zTop = H0 + r.v * scale; // < H0
+          if (zTop > 1e-6) segs.push({ part: "graph", z0: 0, z1: zTop });
+          segs.push({ part: "debt", z0: Math.max(0, zTop), z1: H0 });
+        }
+        return { p0: r.p0, p1: r.p1, segs, merged: r.merged, minLen: r.minLen };
+      });
+      meanH = H0 + series.mean * scale;
+      // klipp vid clamp
+      for (const b of bracketRows) {
+        for (const s of b.segs) s.z1 = Math.min(s.z1, state.clampMm > 0 ? state.clampMm : Infinity);
+        b.segs = b.segs.filter((s) => s.z1 > s.z0);
+      }
+      notes.push("debt");
+    }
+    if (!bracketRows) {
+      const rows = mergeTopRows(
+        series.brackets.map((b) => ({ p0: b.p0, p1: b.p1, v: b.v })),
+        state.cutTop, ["v"]
+      );
+      bracketRows = rowsToSegs(rows, [{ part: "graph", field: "v" }], scale, state.clampMm);
+    }
+    if (state.deciles) opts.decileGlyphs = decileGlyphs(font, opts.depth);
+    opts.meanH = meanH > 0.5 ? meanH : null;
+    built = buildStrip(bracketRows, opts);
+    built.merged = bracketRows.some((b) => b.merged);
+    built.clamped = bracketRows.some((b) => b.clamped);
+  } else {
+    const rows = mergeTopRows(
+      series.brackets.map((b) => ({ p0: b.p0, p1: b.p1, v: b.v })),
+      state.cutTop, ["v"]
+    );
+    const br = rows.map((r) => {
+      let h = r.v * scale;
+      let clamped = false;
+      if (state.clampMm > 0 && h > state.clampMm) { h = state.clampMm; clamped = true; }
+      return { p0: r.p0, p1: r.p1, v: h, merged: r.merged, minLen: r.minLen, clamped };
+    });
+    built = (shape === "square" ? buildSquare : buildSpiral)(br, opts);
+    built.merged = br.some((b) => b.merged);
+    built.clamped = br.some((b) => b.clamped);
+  }
 
   const cName = countryName(countryData).toUpperCase();
-  const txt = bottomText(font, built.plate, cName);
+  const qrZone = qrModules(countryData.code, built.plate);
+  const txt = bottomText(font, built.plate, cName, qrZone);
 
+  const cCol = colorByCountry.get(countryData.code);
   const parts = [];
-  parts.push({ key: "graph", geoms: [trisToGeometry(built.graphTris)], color: null });
-  parts.push({ key: "base", geoms: buildPlinth(built.plate, txt.shapes), color: COL_BASE });
-  if (built.finTris && built.finTris.length) parts.push({ key: "fins", geoms: [trisToGeometry(built.finTris)], color: COL_FIN });
-  parts.push({ key: "text", geoms: buildInlay(txt.shapes), color: COL_TEXT });
-  if (built.numberInlayTris && built.numberInlayTris.length) parts.push({ key: "numbers", geoms: [trisToGeometry(built.numberInlayTris)], color: COL_NUM });
+  const order = ["graph", "gov", "cons", "inv", "debt", "mean", "numbers"];
+  for (const key of order) {
+    const tris = built.parts[key];
+    if (!tris || !tris.length) continue;
+    const color = key === "graph" || key === "cons" ? cCol : new THREE.Color(PART_COLORS[key]);
+    parts.push({ key, geoms: [trisToGeometry(tris)], color });
+  }
+  parts.push({ key: "base", geoms: buildPlinth(built.plate, txt.shapes, qrZone ? qrZone.rects : []), color: new THREE.Color(PART_COLORS.base) });
+  const textGeoms = buildInlay(txt.shapes);
+  if (qrZone) textGeoms.push(trisToGeometry(qrInlayTris(qrZone.rects)));
+  parts.push({ key: "text", geoms: textGeoms, color: new THREE.Color(PART_COLORS.text) });
 
-  return { series, built, brackets, parts };
+  return { series, built, parts, notes };
 }
 
 function disposeModels() {
@@ -248,28 +411,26 @@ async function rebuild() {
       const model = makeModel(cd, shape, font);
       if (!model) { warns.add(t("warn_nodata")(cName)); continue; }
       any = true;
-      const { series, built, brackets, parts } = model;
+      const { series, built, parts, notes } = model;
       const group = new THREE.Group();
-      const cCol = colorByCountry.get(cd.code);
       for (const part of parts) {
-        const color = part.color == null ? cCol : new THREE.Color(part.color);
-        const mat = new THREE.MeshStandardMaterial({ color, roughness: part.key === "graph" ? 0.6 : 0.8, metalness: 0.03 });
+        const mat = new THREE.MeshStandardMaterial({
+          color: part.color, roughness: part.key === "base" ? 0.8 : 0.62, metalness: 0.03,
+        });
         for (const g of part.geoms) group.add(new THREE.Mesh(g, mat));
       }
-      const size = state.baseSize;
-      group.position.set(col * (size + gapX), si * (size + gapY), 0);
+      group.position.set(col * (state.baseSize + gapX), si * (state.baseSize + gapY), 0);
       root.add(group);
 
       // etikett
       const div = document.createElement("div");
       div.className = "model-label";
-      const bits = [];
-      const realMaxMm = built.stats.maxH;
-      const fullMm = Math.max(0, ...brackets.map((b) => b.v)) * state.scales[state.measure];
-      bits.push(state.clampMm > 0 && fullMm > state.clampMm + 0.5
-        ? `${t("lbl_top")(fmtH(fullMm))} ${t("lbl_shown")(fmtH(realMaxMm))}`
-        : t("lbl_top")(fmtH(realMaxMm)));
-      if (shape !== "cum" && state.cutTop && brackets.some((b) => b.merged)) bits.push(t("lbl_merged")(cutLabel()));
+      const bits = [t("lbl_top")(fmtH(built.stats.maxH))];
+      if (built.clamped) bits.push(t("lbl_clampnote")(state.clampMm));
+      if (built.merged) bits.push(t("lbl_merged")(cutLabel()));
+      if (state.measure === "carbon" && shape === "strip" && !notes.includes("layers")) {
+        warns.add(t("warn_nolayers")(cName));
+      }
       const srcNote = state.source === "pip"
         ? ` · ${t("lbl_pip")(series.welfare === "consumption" ? t("welfare_cons") : t("welfare_inc"))}` : "";
       div.innerHTML = `<span class="big">${cName}</span> <span class="dim">${series.year} · ${t("shape_" + shape)}${srcNote}</span><br>
@@ -279,10 +440,10 @@ async function rebuild() {
       label.position.set(0, -halfD - 12, 0);
       group.add(label);
 
-      if (series.clampedNeg) warns.add(t("warn_neg")(cName));
+      if (series.clampedNeg && !(state.measure === "wealth" && state.debt)) warns.add(t("warn_neg")(cName));
       const fm = t("file_measure")[state.measure];
       currentModels.push({
-        code: cd.code, name: cName, shape, parts, series, brackets, group,
+        code: cd.code, name: cName, shape, parts, series, group,
         basename: `${cd.code}_${state.source}_${fm}_${series.year}_${t("shape_" + shape)}`,
       });
     }
@@ -333,10 +494,7 @@ function fitCameraIfNeeded() {
 
 // ---------- export ----------
 
-function partGeoms(m, key) {
-  const p = m.parts.find((x) => x.key === key);
-  return p ? p.geoms : null;
-}
+const PART_ORDER = ["graph", "gov", "cons", "inv", "debt", "mean", "base", "numbers", "text"];
 
 function renderExports() {
   const el = document.getElementById("exports");
@@ -348,21 +506,15 @@ function renderExports() {
     lbl.textContent = `${m.name} · ${t("shape_" + m.shape)}`;
     const btns = document.createElement("span");
     btns.className = "btns";
-    const mk = (key, file) => {
-      const geoms = partGeoms(m, key);
-      if (!geoms || !geoms.length) return;
+    for (const key of PART_ORDER) {
+      const p = m.parts.find((x) => x.key === key);
+      if (!p || !p.geoms.length) continue;
       const b = document.createElement("button");
       b.className = "btn";
       b.textContent = t("part_" + key);
-      b.title = t("part_" + key);
-      b.onclick = () => exportSTL(geoms, `${m.basename}_${file}.stl`);
+      b.onclick = () => exportSTL(p.geoms, `${m.basename}_${t("file_" + key)}.stl`);
       btns.appendChild(b);
-    };
-    mk("graph", t("file_graph"));
-    mk("base", t("file_base"));
-    mk("fins", t("file_fins"));
-    mk("numbers", t("file_numbers"));
-    mk("text", t("file_text"));
+    }
     row.append(lbl, btns);
     el.appendChild(row);
   }
@@ -370,11 +522,12 @@ function renderExports() {
 }
 document.getElementById("exportAll").onclick = () => {
   let i = 0;
-  const files = { graph: t("file_graph"), base: t("file_base"), fins: t("file_fins"), numbers: t("file_numbers"), text: t("file_text") };
   for (const m of currentModels) {
-    for (const key of ["graph", "base", "fins", "numbers", "text"]) {
-      const geoms = partGeoms(m, key);
-      if (geoms && geoms.length) setTimeout(() => exportSTL(geoms, `${m.basename}_${files[key]}.stl`), i++ * 350);
+    for (const key of PART_ORDER) {
+      const p = m.parts.find((x) => x.key === key);
+      if (p && p.geoms.length) {
+        setTimeout(() => exportSTL(p.geoms, `${m.basename}_${t("file_" + key)}.stl`), i++ * 350);
+      }
     }
   }
 };
@@ -401,6 +554,10 @@ function syncControls() {
   $("currency").disabled = state.source === "pip";
   $("currency").value = state.currency;
   $("currencyRow").style.display = MEASURE_INFO[state.measure].isMoney ? "flex" : "none";
+  $("govRow").style.display = state.measure === "carbon" ? "flex" : "none";
+  $("govMode").value = state.govMode;
+  $("debtRow").style.display = state.measure === "wealth" ? "flex" : "none";
+  $("debt").checked = state.debt;
   const maxYear = state.measure === "carbon" ? 2019 : 2024;
   const yr = $("year");
   yr.max = maxYear;
@@ -411,6 +568,7 @@ function syncControls() {
   document.querySelectorAll('input[name="shape"]').forEach((c) => (c.checked = state.shapes.includes(c.value)));
   $("cutTop").value = String(state.cutTop);
   $("deciles").checked = state.deciles;
+  $("qr").checked = state.qr;
   $("scaleUnit").textContent = t("scale_per_mm") + " " + (state.measure === "carbon" ? "tCO₂e" : (state.currency === "lcu" ? t("lcu_short") : "USD"));
   $("scale").value = fmtScaleInput();
   $("baseSize").value = state.baseSize;
@@ -452,6 +610,9 @@ document.querySelectorAll('input[name="measure"]').forEach((r) =>
   r.addEventListener("change", () => { state.measure = r.value; syncControls(); rebuild(); }));
 $("currency").addEventListener("change", (e) => { state.currency = e.target.value; syncControls(); rebuild(); });
 $("source").addEventListener("change", (e) => { state.source = e.target.value; syncControls(); rebuild(); });
+$("govMode").addEventListener("change", (e) => { state.govMode = e.target.value; rebuild(); });
+$("debt").addEventListener("change", (e) => { state.debt = e.target.checked; rebuild(); });
+$("qr").addEventListener("change", (e) => { state.qr = e.target.checked; rebuild(); });
 $("year").addEventListener("input", (e) => { state.year = +e.target.value; $("yearLabel").textContent = state.year; });
 $("year").addEventListener("change", () => rebuild());
 document.querySelectorAll('input[name="shape"]').forEach((c) =>

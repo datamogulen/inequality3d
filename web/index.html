@@ -130,6 +130,16 @@
           <option value="pip" data-i18n="src_pip">Världsbanken PIP</option>
         </select>
       </div>
+      <div class="kv" id="govRow">
+        <span data-i18n="gov_lbl">Offentlig konsumtion</span>
+        <select id="govMode">
+          <option value="flat" data-i18n="gov_flat">lika per person (Chancel)</option>
+          <option value="income" data-i18n="gov_income">efter inkomst (Oxfam)</option>
+        </select>
+      </div>
+      <div class="kv" id="debtRow">
+        <label class="row" style="padding:0"><input type="checkbox" id="debt"> <span data-i18n="debt_lbl">Visa skulder (förhöjt nollplan, egen STL)</span></label>
+      </div>
     </fieldset>
 
     <fieldset>
@@ -151,10 +161,10 @@
     <fieldset>
       <legend data-i18n="fs_shape">Form</legend>
       <label class="row"><input type="checkbox" name="shape" value="strip" checked> <span data-i18n="sh_strip">Remsa (percentil-staket)</span></label>
-      <label class="row"><input type="checkbox" name="shape" value="cum"> <span data-i18n="sh_cum">Kumulativ remsa</span></label>
       <label class="row"><input type="checkbox" name="shape" value="spiral"> <span data-i18n="sh_spiral">Spiral (rikast i mitten)</span></label>
       <label class="row"><input type="checkbox" name="shape" value="square"> <span data-i18n="sh_square">Kvadrat (10 × 10 rader)</span></label>
-      <label class="row"><input type="checkbox" id="deciles" checked> <span data-i18n="deciles_lbl">Decilfenor + nummer (remsa)</span></label>
+      <label class="row"><input type="checkbox" id="deciles" checked> <span data-i18n="deciles_lbl">Decilskåror + graverade nummer (remsa)</span></label>
+      <label class="row"><input type="checkbox" id="qr" checked> <span data-i18n="qr_lbl">QR-kod till infosida på undersidan</span></label>
     </fieldset>
 
     <fieldset>

@@ -1,15 +1,19 @@
 // Bygger vattentäta solider (Z-upp, mm) för formerna.
-// Axeljusterade lådor för remsa/kvadrat/fenor/gravyr; svept låda för spiral.
-// Delar överlappar EPS så slicern kan unionera utan koplanära ytor.
+// Remsan är segmentbaserad: varje percentilstapel består av staplade
+// segment {part, z0, z1} (t.ex. offentligt/konsumtion/investeringar för
+// CO2, eller skuld/positiv för förmögenhet) som hamnar i olika STL-delar.
+// All gravyr (bottentext, decilnummer, QR) byggs med scanline → slutna
+// lådor, robust mot överlappande glyfer.
 
 import * as THREE from "three";
 
 const EPS = 0.06;
-export const TEXT_PLATE = 0.7;   // gravyrdjup på undersidan, mm
-export const BASE_TOP = 1.6;     // plintens totala höjd, mm
+export const TEXT_PLATE = 0.7;    // gravyrdjup på undersidan, mm
+export const BASE_TOP = 1.6;      // plintens totala höjd, mm
 const BASE_OVERLAP = 0.1;
-export const FIN_W = 1.4;        // decilfenans bredd, mm
-export const TOP_ENGRAVE_D = 0.6; // decilnumrens gravyrdjup ovanpå, mm
+export const GROOVE_W = 1.2;      // decilskårans bredd, mm
+export const TOP_ENGRAVE_D = 0.6; // decilnumrens gravyrdjup, mm
+export const MEAN_T = 0.9;        // medelstreckets tjocklek, mm
 
 // ---------- primitiver ----------
 
@@ -20,25 +24,17 @@ export function trisToGeometry(arr) {
   return g;
 }
 
-// Axeljusterad låda → 12 trianglar i out.
-function boxTris(x0, x1, y0, y1, z0, z1, out) {
+// Sluten axeljusterad låda → 12 trianglar i out.
+export function boxTris(x0, x1, y0, y1, z0, z1, out) {
   if (x1 <= x0 || y1 <= y0 || z1 <= z0) return;
   const v = [
-    [x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0], // botten 0-3
-    [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], // topp 4-7
+    [x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0],
+    [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1],
   ];
-  const q = (a, b, c, d) => {
-    out.push(...v[a], ...v[b], ...v[c], ...v[a], ...v[c], ...v[d]);
-  };
-  q(0, 3, 2, 1); // botten (−Z)
-  q(4, 5, 6, 7); // topp (+Z)
-  q(0, 1, 5, 4); // −Y
-  q(2, 3, 7, 6); // +Y
-  q(1, 2, 6, 5); // +X
-  q(3, 0, 4, 7); // −X
+  const q = (a, b, c, d) => out.push(...v[a], ...v[b], ...v[c], ...v[a], ...v[c], ...v[d]);
+  q(0, 3, 2, 1); q(4, 5, 6, 7); q(0, 1, 5, 4); q(2, 3, 7, 6); q(1, 2, 6, 5); q(3, 0, 4, 7);
 }
 
-// svept låda längs polylinje (för spiral)
 function sweptBox(pts, w, z0, z1, out) {
   const n = pts.length;
   if (n < 2 || z1 <= z0) return;
@@ -82,15 +78,7 @@ function extendPath(pts, d) {
   return p;
 }
 
-function barHeight(v, opts) {
-  const h = v * opts.scale;
-  if (opts.clampMm > 0 && h > opts.clampMm) return { h: opts.clampMm, truncated: true };
-  return { h, truncated: false };
-}
-
-// ---------- gravyr på ovansidan (decilnummer) ----------
-// Glyfer → polygoner; scanline ger täckta y-intervall per x-kolumn så vi kan
-// bygga gravyrficka + inlägg som följer den trappande grafytan.
+// ---------- scanline-verktyg ----------
 
 function polysFromShapes(shapes, res = 6) {
   return shapes.map((s) => ({
@@ -99,7 +87,6 @@ function polysFromShapes(shapes, res = 6) {
   }));
 }
 
-// y-krossningar av vertikal linje x mot polygon → inside-intervall [ [y0,y1], ... ]
 function crossIntervals(poly, x) {
   const ys = [];
   const n = poly.length;
@@ -117,7 +104,6 @@ function crossIntervals(poly, x) {
 }
 
 function subtract(a, b) {
-  // a, b: sorterade disjunkta intervall. a minus b.
   let res = a.map((iv) => iv.slice());
   for (const [b0, b1] of b) {
     const next = [];
@@ -142,7 +128,6 @@ function unionSorted(list) {
   return out;
 }
 
-// täckta y-intervall (inuti glyf) vid x
 function coverageAtX(polys, x) {
   const covered = [];
   for (const p of polys) {
@@ -153,104 +138,132 @@ function coverageAtX(polys, x) {
   return unionSorted(covered);
 }
 
-// Gravera glyfer (i strip-koord, placerade) i toppytan över x∈[gx0,gx1].
-// heightAt(x) → grafhöjd (z, absolut). Skriver ficka till graphOut, inlägg
-// till inlayOut. Kolumnbredd dx styr x-upplösningen.
-function engraveTop(polys, gx0, gx1, y0, y1, heightAt, graphOut, inlayOut) {
-  const dx = 0.3;
-  const n = Math.max(1, Math.round((gx1 - gx0) / dx));
-  const w = (gx1 - gx0) / n;
-  for (let i = 0; i < n; i++) {
-    const xa = gx0 + i * w, xb = xa + w, xc = (xa + xb) / 2;
-    const top = heightAt(xc);
-    const pocketTop = top;
-    const pocketBot = top - TOP_ENGRAVE_D;
-    const cov = coverageAtX(polys, xc).map(([a, b]) => [Math.max(y0, a), Math.min(y1, b)])
-      .filter(([a, b]) => b > a);
-    // bulk under fickan
-    boxTris(xa, xb + EPS, y0, y1, BASE_TOP - BASE_OVERLAP, pocketBot, graphOut);
-    // lamina: solid där INTE täckt; inlägg där täckt
-    const solid = subtract([[y0, y1]], cov);
-    for (const [ya, yb] of solid) boxTris(xa, xb + EPS, ya, yb, pocketBot, pocketTop, graphOut);
-    for (const [ya, yb] of cov) boxTris(xa, xb + EPS, ya, yb, pocketBot, pocketTop, inlayOut);
-  }
-}
-
-// ---------- remsa ----------
-// opts extra: length, depth, endMargin, decileGlyphs (array[10] {shapes,size}|null),
-// cumulative (bool påverkar redan värdena i main), engrave (bool)
+// ---------- remsa (segmentbaserad) ----------
+// brackets: [{p0, p1, segs: [{part, z0, z1}] (mm över plattan, staplade),
+//             minLen?}]
+// opts: { length, depth, endMargin, grooves (default true),
+//         decileGlyphs (array[10] {shapes,width,height} | null),
+//         meanH (mm över plattan | null) }
+// Returnerar { parts: {namn: tris[]}, plate, stats }.
 export function buildStrip(brackets, opts) {
-  const L = opts.length;
-  const W = opts.depth;
-  const x0 = -L / 2;
-  const y0 = -W / 2, y1 = W / 2;
+  const L = opts.length, W = opts.depth;
+  const x0 = -L / 2, y0 = -W / 2, y1 = W / 2;
   const xAt = (p) => x0 + (p / 100) * L;
-  const isDecile = (p) => Math.abs(p / 10 - Math.round(p / 10)) < 1e-6 && p > 0 && p < 100;
+  const isDec = (p) => p > 0 && p < 100 && Math.abs(p / 10 - Math.round(p / 10)) < 1e-6;
+  const grooves = opts.grooves !== false;
 
-  const graph = [], fins = [], numberInlay = [];
-  let truncated = 0, maxH = 0;
+  const parts = {};
+  const arr = (k) => (parts[k] ??= []);
+  const mean = opts.meanH != null
+    ? { z0: BASE_TOP + opts.meanH - MEAN_T / 2, z1: BASE_TOP + opts.meanH + MEAN_T / 2 }
+    : null;
 
-  // höjd per percentil (för fenor och gravyr): styckvis konstant per bracket
-  const heightForP = (p) => {
-    for (const b of brackets) if (p >= b.p0 - 1e-9 && p <= b.p1 + 1e-9) {
-      return BASE_TOP + barHeight(b.v, opts).h;
+  // lägg en låda i part, med medelstrecks-splitt
+  const put = (part, xa, xb, ya, yb, za, zb) => {
+    if (zb <= za) return;
+    if (mean && zb > mean.z0 && za < mean.z1) {
+      if (za < mean.z0) boxTris(xa, xb, ya, yb, za, mean.z0 + 0.03, arr(part));
+      boxTris(xa, xb, ya, yb, Math.max(za, mean.z0), Math.min(zb, mean.z1), arr("mean"));
+      if (zb > mean.z1) boxTris(xa, xb, ya, yb, mean.z1 - 0.03, zb, arr(part));
+      return;
     }
-    return BASE_TOP;
+    boxTris(xa, xb, ya, yb, za, zb, arr(part));
+  };
+  // alla segment i en kolumn [xa,xb], upp till maxZ (absolut)
+  const putSegs = (segs, xa, xb, capZ) => {
+    for (const s of segs) {
+      const za = BASE_TOP + s.z0, zb = Math.min(BASE_TOP + s.z1, capZ);
+      put(s.part, xa, xb, y0, y1, za - (s.z0 > 0 ? EPS : BASE_OVERLAP), zb);
+    }
   };
 
-  for (const b of brackets) {
-    const { h, truncated: t } = barHeight(b.v, opts);
-    if (t) truncated++;
-    maxH = Math.max(maxH, h);
-    let xa = xAt(b.p0), xb = xAt(b.p1);
-    // krymp för fen-gap vid decilgränser
-    if (isDecile(b.p0)) xa += FIN_W / 2;
-    if (isDecile(b.p1)) xb -= FIN_W / 2;
-    if (h <= 0) continue;
-    boxTris(xa, xb + EPS, y0, y1, BASE_TOP - BASE_OVERLAP, BASE_TOP + h, graph);
-  }
+  // percentil → bracket (för gravyrkolumner)
+  const bracketAt = (p) => {
+    for (const b of brackets) if (p >= b.p0 - 1e-9 && p <= b.p1 + 1e-9) return b;
+    return null;
+  };
+  const topOf = (b) => (b && b.segs.length ? b.segs[b.segs.length - 1].z1 : 0);
 
-  // decilfenor (fyller gapen), höjd = max av grannbrackets höjd
-  for (let k = 1; k <= 9; k++) {
-    const p = k * 10;
-    const xc = xAt(p);
-    const hFin = Math.max(heightForP(p - 0.001), heightForP(p + 0.001));
-    boxTris(xc - FIN_W / 2, xc + FIN_W / 2, y0, y1, BASE_TOP - BASE_OVERLAP, hFin, fins);
-  }
-
-  // decilnummer graverade i toppen
+  // decilnummer-zoner
+  const zones = [];
   if (opts.decileGlyphs) {
     for (let k = 0; k < 10; k++) {
       const g = opts.decileGlyphs[k];
       if (!g || !g.shapes.length) continue;
-      const pc = (k + 0.5) * 10;
-      const cx = xAt(pc);
-      // placera glyfblocket centrerat vid (cx, 0)
+      const cx = xAt((k + 0.5) * 10);
+      const half = g.width / 2 + 0.6;
+      let gx0 = Math.max(cx - half, xAt(k * 10) + (k > 0 ? GROOVE_W / 2 : 0) + 0.3);
+      let gx1 = Math.min(cx + half, xAt((k + 1) * 10) - (k < 9 ? GROOVE_W / 2 : 0) - 0.3);
+      if (gx1 <= gx0) continue;
       const polys = polysFromShapes(g.shapes).map((poly) => ({
         outer: poly.outer.map(([x, y]) => [x + cx, y]),
         holes: poly.holes.map((h) => h.map(([x, y]) => [x + cx, y])),
       }));
-      const half = g.width / 2 + 0.6;
-      let gx0 = cx - half, gx1 = cx + half;
-      // håll gravyren innanför decilen (minus fen-gap)
-      gx0 = Math.max(gx0, xAt(k * 10) + (k > 0 ? FIN_W / 2 : 0) + 0.3);
-      gx1 = Math.min(gx1, xAt((k + 1) * 10) - (k < 9 ? FIN_W / 2 : 0) - 0.3);
-      const yBand = Math.min(W / 2 - 1, g.height / 2 + 1);
-      const heightAt = (x) => {
-        // percentil vid x
-        const p = ((x - x0) / L) * 100;
-        return Math.max(BASE_TOP + TOP_ENGRAVE_D + 0.2, heightForP(p));
-      };
-      engraveTop(polys, gx0, gx1, -yBand, yBand, heightAt, graph, numberInlay);
+      zones.push({ gx0, gx1, polys });
+    }
+  }
+  const zoneCuts = zones.flatMap((z) => [z.gx0, z.gx1]);
+
+  let maxH = 0, clamped = 0;
+  for (const b of brackets) {
+    let xa = xAt(b.p0), xb = xAt(b.p1);
+    if (grooves) {
+      if (isDec(b.p0)) xa += GROOVE_W / 2;
+      if (isDec(b.p1)) xb -= GROOVE_W / 2;
+    }
+    if (b.minLen && xb - xa < b.minLen) xa = xb - b.minLen;
+    maxH = Math.max(maxH, topOf(b));
+    if (b.clamped) clamped++;
+    // dela stapelns x-intervall vid zongränser; utelämna zon-delarna
+    const cuts = [xa, ...zoneCuts.filter((c) => c > xa && c < xb).sort((a, c) => a - c), xb];
+    for (let i = 0; i + 1 < cuts.length; i++) {
+      const sxa = cuts[i], sxb = cuts[i + 1];
+      const mid = (sxa + sxb) / 2;
+      if (zones.some((z) => mid >= z.gx0 && mid <= z.gx1)) continue; // byggs av gravyren
+      putSegs(b.segs, sxa, sxb + EPS, Infinity);
+    }
+  }
+
+  // gravyrkolumner i zonerna (lager + ficka + nummer-inlägg)
+  const dx = 0.3;
+  for (const z of zones) {
+    const n = Math.max(1, Math.round((z.gx1 - z.gx0) / dx));
+    const w = (z.gx1 - z.gx0) / n;
+    for (let i = 0; i < n; i++) {
+      const xa = z.gx0 + i * w, xb = xa + w, xc = (xa + xb) / 2;
+      const p = ((xc - x0) / L) * 100;
+      const b = bracketAt(p);
+      if (!b) continue;
+      let segs = b.segs;
+      let top = topOf(b);
+      // minsta gravyrpadd för nästan tomma staplar
+      const minTop = TOP_ENGRAVE_D + 0.25;
+      if (top < minTop) {
+        const padPart = segs.length ? segs[segs.length - 1].part : "graph";
+        segs = [...segs, { part: padPart, z0: top, z1: minTop }];
+        top = minTop;
+      }
+      const pocketBot = BASE_TOP + top - TOP_ENGRAVE_D;
+      const topPart = segs[segs.length - 1].part;
+      // segment under fickbotten
+      putSegs(segs, xa, xb + EPS, pocketBot);
+      // ficklagret: solid där inte täckt, nummer där täckt
+      const cov = coverageAtX(z.polys, xc)
+        .map(([a, c]) => [Math.max(y0, a), Math.min(y1, c)])
+        .filter(([a, c]) => c > a);
+      for (const [ya, yb] of subtract([[y0, y1]], cov)) {
+        boxTris(xa, xb + EPS, ya, yb, pocketBot - EPS, BASE_TOP + top, arr(topPart));
+      }
+      for (const [ya, yb] of cov) {
+        boxTris(xa, xb + EPS, ya, yb, pocketBot - EPS, BASE_TOP + top, arr("numbers"));
+      }
     }
   }
 
   return {
-    graphTris: graph,
-    finTris: fins,
-    numberInlayTris: numberInlay,
-    plate: { kind: "rect", w: L + 2 * opts.endMargin, d: W, extendX: true },
-    stats: { truncated, maxH },
+    parts,
+    plate: { kind: "rect", w: L + 2 * opts.endMargin, d: W },
+    stats: { maxH, clamped },
   };
 }
 
@@ -260,10 +273,9 @@ export function buildSquare(brackets, opts) {
   const pitch = S / 10;
   const w = pitch * 0.8;
   const out = [];
-  let truncated = 0, maxH = 0;
+  let maxH = 0;
   for (const b of brackets) {
-    const { h, truncated: t } = barHeight(b.v, opts);
-    if (t) truncated++;
+    const h = b.v;
     if (h <= 0) continue;
     maxH = Math.max(maxH, h);
     const row = Math.min(9, Math.floor(b.p0 / 10));
@@ -275,10 +287,9 @@ export function buildSquare(brackets, opts) {
     boxTris(xa, xb + EPS, yMid - w / 2, yMid + w / 2, BASE_TOP - BASE_OVERLAP, BASE_TOP + h, out);
   }
   return {
-    graphTris: out,
-    finTris: [], numberInlayTris: [],
+    parts: { graph: out },
     plate: { kind: "rect", w: S + 2 * opts.endMargin, d: S + 2 * opts.endMargin },
-    stats: { truncated, maxH },
+    stats: { maxH },
   };
 }
 
@@ -302,10 +313,9 @@ export function buildSpiral(brackets, opts) {
     return [r * Math.cos(theta), r * Math.sin(theta)];
   };
   const out = [];
-  let truncated = 0, maxH = 0;
+  let maxH = 0;
   for (const b of brackets) {
-    const { h, truncated: t } = barHeight(b.v, opts);
-    if (t) truncated++;
+    const h = b.v;
     if (h <= 0) continue;
     maxH = Math.max(maxH, h);
     let f0 = b.p0 / 100;
@@ -318,18 +328,13 @@ export function buildSpiral(brackets, opts) {
     sweptBox(extendPath(path, EPS), spiralWidth, BASE_TOP - BASE_OVERLAP, BASE_TOP + h, out);
   }
   return {
-    graphTris: out,
-    finTris: [], numberInlayTris: [],
+    parts: { graph: out },
     plate: { kind: "circle", r: R },
-    stats: { truncated, maxH },
+    stats: { maxH },
   };
 }
 
 // ---------- glyfer → vattentäta shapes ----------
-// Vissa glyfer (t.ex. N) har exakta dubbelpunkter i konturen som ger
-// degenererade väggfacetter vid extrudering → oparade kanter. Vi
-// polygoniserar och tar bort ENBART dubbletter (inte kollinjära punkter,
-// som skulle förstöra bokstavsformen).
 const GLYPH_RES = 20;
 
 function dedupe(pts, eps = 2e-3) {
@@ -357,10 +362,14 @@ export function buildInlay(shapes) {
   );
 }
 
-// ---------- plint (bottenplatta) med graverad text ----------
-// Undersidan graveras via scanline (robust mot överlappande glyfer, till
-// skillnad från earcut-hål). Returnerar [laminaGeom, basGeom]. textShapes
-// är speglade och centrerade. Inlägget byggs separat med buildInlay.
+// QR-inlägg: mörka moduler som lådor 0..INLAY_H (samma del som texten).
+export function qrInlayTris(qrRects) {
+  const out = [];
+  for (const r of qrRects) boxTris(r.x0, r.x1, r.y0, r.y1, 0, INLAY_H, out);
+  return out;
+}
+
+// ---------- plint (bottenplatta) med graverad text + QR ----------
 function plateSpanY(plate, x) {
   if (plate.kind === "circle") {
     if (Math.abs(x) >= plate.r) return null;
@@ -371,7 +380,7 @@ function plateSpanY(plate, x) {
   return [-plate.d / 2, plate.d / 2];
 }
 
-export function buildPlinth(plate, textShapes) {
+export function buildPlinth(plate, textShapes, qrRects = []) {
   const outline = new THREE.Shape();
   if (plate.kind === "circle") outline.absarc(0, 0, plate.r, 0, Math.PI * 2, false);
   else {
@@ -391,9 +400,11 @@ export function buildPlinth(plate, textShapes) {
     const xa = -xMax + i * w, xb = xa + w, xc = (xa + xb) / 2;
     const span = plateSpanY(plate, xc);
     if (!span) continue;
-    const cov = polys.length
-      ? coverageAtX(polys, xc).map(([a, b]) => [Math.max(span[0], a), Math.min(span[1], b)]).filter(([a, b]) => b > a)
-      : [];
+    const gcov = polys.length ? coverageAtX(polys, xc) : [];
+    const qcov = qrRects.filter((r) => xc >= r.x0 && xc <= r.x1).map((r) => [r.y0, r.y1]);
+    const cov = unionSorted([...gcov, ...qcov])
+      .map(([a, b]) => [Math.max(span[0], a), Math.min(span[1], b)])
+      .filter(([a, b]) => b > a);
     for (const [ya, yb] of subtract([span], cov)) boxTris(xa, xb + EPS, ya, yb, 0, TEXT_PLATE + EPS, lamina);
   }
   return [trisToGeometry(lamina), base];
