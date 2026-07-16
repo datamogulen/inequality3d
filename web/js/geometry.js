@@ -358,7 +358,20 @@ export function buildStrip(brackets, opts) {
     parts,
     plate: { kind: "rect", w: L + 2 * opts.endMargin, d: W },
     stats: { maxH, clamped },
+    // för hover: invertera x → percentil (samma logik som pAt ovan)
+    map: { x0, La, gaps: gaps.map((g) => ({ p: g.p, w: g.w, xStart: g.xStart })) },
   };
+}
+
+// Percentil vid lokal x-koordinat på en remsa (invers av lucke-mappningen).
+export function stripPAt(map, x) {
+  let xx = x - map.x0;
+  for (const g of map.gaps) {
+    if (x >= g.xStart + g.w) xx -= g.w;
+    else if (x >= g.xStart) return g.p;
+    else break;
+  }
+  return Math.min(100, Math.max(0, (xx / map.La) * 100));
 }
 
 // ---------- kvadrat ----------

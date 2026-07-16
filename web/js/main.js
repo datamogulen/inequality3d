@@ -1,10 +1,9 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import { loadIndex, loadCountry, getSeries, getComponent, getGovFootprint, MEASURE_INFO } from "./data.js";
 import {
   buildStrip, buildSpiral, buildSquare, buildPlinth, buildInlay,
-  qrInlayTris, trisToGeometry, INLAY_H,
+  qrInlayTris, trisToGeometry, stripPAt,
 } from "./geometry.js";
 import { loadFont, loadBoldFont, textShapes, textBlock, translateShapes } from "./text.js";
 import { exportSTL } from "./stl.js";
@@ -13,7 +12,7 @@ import qrcode from "../vendor/qrcode.mjs";
 
 // ---------- konstanter ----------
 
-const STATE_V = 5; // bumpa för att nollställa inaktuella val i localStorage
+const STATE_V = 6; // bumpa för att nollställa inaktuella val i localStorage
 const PALETTE = ["#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e34948", "#e87ba4", "#eb6834"];
 const PART_COLORS = {
   base: 0xd9d2c2, text: 0xd9a021, numbers: 0x2f2f2f, mean: 0x1c1c1c,
@@ -45,7 +44,7 @@ const state = {
   govMode: "flat", // "flat" = Chancel (lika/person), "income" = Oxfam
   debt: false,     // förmögenhet: skuldlager under förhöjt nollplan
   qr: true,        // QR-kod på undersidan
-  labels: true,    // 3D-etiketter
+  stack: false,    // stapla länderna bakom varandra (minst främst)
   more: false,     // visa alla länder (varierande datakvalitet)
 };
 try {
@@ -67,6 +66,7 @@ function persist() { localStorage.setItem("ineq3d", JSON.stringify(state)); }
 let index = null;
 let colorByCountry = new Map();
 let currentModels = [];
+let hoverTargets = [];
 
 // ---------- three-scen ----------
 
@@ -74,11 +74,6 @@ const viewport = document.getElementById("canvas3d");
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
 viewport.appendChild(renderer.domElement);
-const labelRenderer = new CSS2DRenderer();
-labelRenderer.domElement.style.position = "absolute";
-labelRenderer.domElement.style.inset = "0";
-labelRenderer.domElement.style.pointerEvents = "none";
-viewport.appendChild(labelRenderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color("#f7f5f0");
@@ -105,7 +100,6 @@ scene.add(grid);
 function resize() {
   const w = viewport.clientWidth, h = viewport.clientHeight;
   renderer.setSize(w, h);
-  labelRenderer.setSize(w, h);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
 }
@@ -115,7 +109,6 @@ window.__ineq = { camera, controls, scene, root, renderer };
 renderer.setAnimationLoop(() => {
   controls.update();
   renderer.render(scene, camera);
-  labelRenderer.render(scene, camera);
 });
 
 // ---------- data → segment ----------
@@ -308,10 +301,15 @@ function makeModel(countryData, shape, font, boldFont, warns) {
   let meanH = series.mean * scale;
   if (shape === "strip") {
     let bracketRows;
+    let hoverRows = null;
     if (state.measure === "carbon") {
       const rows = carbonRows(countryData, series, warns);
       if (rows) {
         const merged = mergeTopRows(rows, state.cutTop, ["gov", "cons", "inv"]);
+        hoverRows = merged.map((r) => ({
+          p0: r.p0, p1: r.p1, merged: r.merged,
+          total: r.gov + r.cons + r.inv, gov: r.gov, cons: r.cons, inv: r.inv,
+        }));
         // Oxfam-läget ändrar summan per percentil; medel är oförändrat
         bracketRows = rowsToSegs(merged, [
           { part: "gov", field: "gov" },
@@ -325,6 +323,7 @@ function makeModel(countryData, shape, font, boldFont, warns) {
         series.brackets.map((b) => ({ p0: b.p0, p1: b.p1, v: b.vRaw })),
         state.cutTop, ["v"]
       );
+      hoverRows = rows.map((r) => ({ p0: r.p0, p1: r.p1, merged: r.merged, v: r.v }));
       const minV = Math.min(0, ...rows.map((r) => r.v));
       const H0 = -minV * scale; // nollplanets höjd
       bracketRows = rows.map((r) => {
@@ -351,6 +350,7 @@ function makeModel(countryData, shape, font, boldFont, warns) {
         series.brackets.map((b) => ({ p0: b.p0, p1: b.p1, v: b.v })),
         state.cutTop, ["v"]
       );
+      hoverRows = rows.map((r) => ({ p0: r.p0, p1: r.p1, merged: r.merged, v: r.v }));
       bracketRows = rowsToSegs(rows, [{ part: "graph", field: "v" }], scale, state.clampMm);
     }
     if (state.deciles) opts.decileGlyphs = decileGlyphs(boldFont, opts.depth);
@@ -358,6 +358,7 @@ function makeModel(countryData, shape, font, boldFont, warns) {
     opts.splitP = splitPercentile(series.brackets);
     built = buildStrip(bracketRows, opts);
     built.splitP = opts.splitP;
+    built.hover = hoverRows;
     built.merged = bracketRows.some((b) => b.merged);
     built.clamped = bracketRows.some((b) => b.clamped);
   } else {
@@ -400,12 +401,50 @@ function makeModel(countryData, shape, font, boldFont, warns) {
 function disposeModels() {
   for (const m of currentModels) {
     m.group.traverse((o) => {
-      if (o.isMesh) { o.geometry.dispose(); o.material.dispose(); }
-      if (o.isCSS2DObject) o.element.remove();
+      if (o.isMesh) {
+        o.geometry.dispose();
+        if (o.material.map) o.material.map.dispose();
+        o.material.dispose();
+      }
     });
     root.remove(m.group);
   }
   currentModels = [];
+  hoverTargets = [];
+}
+
+// Markskylt: text ritad på canvas → plan som ligger på marken framför
+// (eller bredvid) modellen. Skyms naturligt och kan aldrig täcka graferna.
+function makeGroundLabel(line1, line2, wMm) {
+  const hMm = 20;
+  const px = 6; // px per mm
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(wMm * px);
+  canvas.height = Math.round(hMm * px);
+  const ctx = canvas.getContext("2d");
+  const r = 10;
+  ctx.fillStyle = "rgba(255,255,255,0.88)";
+  ctx.strokeStyle = "#d8d2c4";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(2, 2, canvas.width - 4, canvas.height - 4, r);
+  ctx.fill(); ctx.stroke();
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#26241f";
+  ctx.font = `bold ${6.4 * px}px -apple-system, Helvetica, sans-serif`;
+  ctx.fillText(line1, canvas.width / 2, 8.6 * px, canvas.width - 20);
+  ctx.fillStyle = "#6b675e";
+  ctx.font = `${4.4 * px}px -apple-system, Helvetica, sans-serif`;
+  ctx.fillText(line2, canvas.width / 2, 15.6 * px, canvas.width - 20);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.anisotropy = 8;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(wMm, hMm),
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })
+  );
+  mesh.renderOrder = 1;
+  return mesh;
 }
 
 function assignColors() {
@@ -431,9 +470,19 @@ async function rebuild() {
 
   const gapX = 40, gapY = 96;
   const warns = new Set();
+  // i stapelläge sorteras länderna minst→störst (efter medelvärde)
+  const order = [...countryDatas].filter(Boolean);
+  if (state.stack) {
+    order.sort((a, b) => {
+      const sa = getSeries(a, state.measure, state.year, state.currency);
+      const sb = getSeries(b, state.measure, state.year, state.currency);
+      return (sa?.mean ?? Infinity) - (sb?.mean ?? Infinity);
+    });
+  }
   let col = 0;
-  for (let ci = 0; ci < state.countries.length; ci++) {
-    const cd = countryDatas[ci];
+  const stackY = state.shapes.map(() => 0); // ackumulerat djup per formkolumn
+  for (let ci = 0; ci < order.length; ci++) {
+    const cd = order[ci];
     const cName = countryName(cd);
     let any = false;
     for (let si = 0; si < state.shapes.length; si++) {
@@ -443,18 +492,29 @@ async function rebuild() {
       any = true;
       const { series, built, parts, notes } = model;
       const group = new THREE.Group();
+      const dataParts = new Set(["graph", "gov", "cons", "inv", "debt", "mean", "split", "numbers"]);
       for (const part of parts) {
         const mat = new THREE.MeshStandardMaterial({
           color: part.color, roughness: part.key === "base" ? 0.8 : 0.62, metalness: 0.03,
         });
-        for (const g of part.geoms) group.add(new THREE.Mesh(g, mat));
+        for (const g of part.geoms) {
+          const mesh = new THREE.Mesh(g, mat);
+          group.add(mesh);
+          if (dataParts.has(part.key)) hoverTargets.push(mesh);
+        }
       }
-      group.position.set(col * (state.baseSize + gapX), si * (state.baseSize + gapY), 0);
+      const halfD = built.plate.kind === "circle" ? built.plate.r : built.plate.d / 2;
+      const plateW = built.plate.kind === "circle" ? built.plate.r * 2 : built.plate.w;
+      if (state.stack) {
+        // samma x för alla länder; plattorna kant-i-kant bakåt
+        group.position.set(si * (state.baseSize + gapX + 60), stackY[si] + halfD, 0);
+        stackY[si] += 2 * halfD + 2;
+      } else {
+        group.position.set(col * (state.baseSize + gapX), si * (state.baseSize + gapY), 0);
+      }
       root.add(group);
 
-      // etikett
-      const div = document.createElement("div");
-      div.className = "model-label";
+      // markskylt (canvas-textur, ligger på marken – skymmer aldrig)
       const bits = [t("lbl_top")(fmtH(built.stats.maxH))];
       if (built.clamped) bits.push(t("lbl_clampnote")(state.clampMm));
       if (built.splitP) bits.push(t("lbl_split")(Math.round(built.splitP)));
@@ -462,19 +522,30 @@ async function rebuild() {
       if (state.measure === "carbon" && shape === "strip" && !notes.includes("layers")) {
         warns.add(t("warn_nolayers")(cName));
       }
-      div.innerHTML = `<span class="big">${cName}</span> <span class="dim">${series.year} · ${t("shape_" + shape)}</span><br>
-        <span class="dim">${bits.join(" · ")}</span>`;
-      const label = new CSS2DObject(div);
-      const halfD = built.plate.kind === "circle" ? built.plate.r : built.plate.d / 2;
-      label.position.set(0, -halfD - 12, 0);
-      group.add(label);
+      const line1 = `${cName} · ${series.year}`;
+      const line2 = bits.join(" · ");
+      if (state.stack) {
+        // skylt till vänster om modellen, roterad längs djupled
+        const lbl = makeGroundLabel(line1, line2, Math.max(70, 2 * halfD - 4));
+        lbl.rotation.z = -Math.PI / 2;
+        lbl.position.set(-plateW / 2 - 14, 0, 0.06);
+        group.add(lbl);
+      } else {
+        const lbl = makeGroundLabel(line1, line2, Math.min(plateW, 190));
+        lbl.position.set(0, -halfD - 12, 0.06);
+        group.add(lbl);
+      }
 
       if (series.clampedNeg && !(state.measure === "wealth" && state.debt)) warns.add(t("warn_neg")(cName));
       const fm = t("file_measure")[state.measure];
       currentModels.push({
         code: cd.code, name: cName, shape, parts, series, group,
+        map: built.map, hover: built.hover,
         basename: `${cd.code}_${fm}_${series.year}_${t("shape_" + shape)}`,
       });
+      for (const mesh of group.children) {
+        if (mesh.isMesh && hoverTargets.includes(mesh)) mesh.userData.model = currentModels[currentModels.length - 1];
+      }
     }
     if (any) col++;
   }
@@ -495,7 +566,7 @@ function fmtNum(x) {
 
 let lastFitKey = "";
 function fitCameraIfNeeded() {
-  const key = `${state.countries.join()}|${state.shapes.join()}|${state.baseSize}`;
+  const key = `${state.countries.join()}|${state.shapes.join()}|${state.baseSize}|${state.stack}`;
   if (key === lastFitKey || !currentModels.length) return;
   lastFitKey = key;
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -565,9 +636,63 @@ function renderWarnings(warns) {
   el.innerHTML = warns.map((w) => "⚠ " + w).join("<br>");
 }
 
-// ---------- kontroller ----------
+// ---------- hover: data för punkten under muspekaren ----------
 
 const $ = (id) => document.getElementById(id);
+const raycaster = new THREE.Raycaster();
+const pointerNdc = new THREE.Vector2();
+
+function fmtTipVal(v) {
+  if (state.measure === "carbon") {
+    return v.toLocaleString(getLang() === "sv" ? "sv-SE" : "en-US", { maximumFractionDigits: 1 }) + " t";
+  }
+  return Math.round(v).toLocaleString(getLang() === "sv" ? "sv-SE" : "en-US") + " USD";
+}
+
+function onPointerMove(e) {
+  const tip = $("tip");
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointerNdc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  pointerNdc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointerNdc, camera);
+  const hits = raycaster.intersectObjects(hoverTargets, false);
+  if (!hits.length) { tip.style.display = "none"; return; }
+  const hit = hits[0];
+  const m = hit.object.userData.model;
+  if (!m) { tip.style.display = "none"; return; }
+  let html = `<b>${m.name}</b> ${m.series.year}`;
+  if (m.map && m.hover) {
+    const local = hit.object.parent.worldToLocal(hit.point.clone());
+    const p = stripPAt(m.map, local.x);
+    const row = m.hover.find((r) => p >= r.p0 - 1e-9 && p <= r.p1 + 1e-9);
+    if (row) {
+      const dec = Math.min(10, Math.floor(row.p0 / 10) + 1);
+      const pLbl = row.merged
+        ? `p99–100 · ${t("lbl_merged")(cutLabel())}`
+        : `p${Math.floor(p)} · ${t("tip_decile")} ${dec}`;
+      html += ` · ${pLbl}<br>`;
+      if (row.total != null) {
+        html += `<b>${fmtTipVal(row.total)}</b> = ${t("part_gov").toLowerCase()} ${fmtTipVal(row.gov)} + ${t("part_cons").toLowerCase()} ${fmtTipVal(row.cons)} + ${t("part_inv").toLowerCase()} ${fmtTipVal(row.inv)}`;
+      } else {
+        html += `<b>${fmtTipVal(row.v)}</b>${row.v < 0 ? " (" + t("part_debt").toLowerCase() + ")" : ""}`;
+      }
+    }
+  } else {
+    html += ` · ${t("shape_" + m.shape)}`;
+  }
+  tip.innerHTML = html;
+  tip.style.display = "block";
+  const vp = viewport.getBoundingClientRect();
+  let x = e.clientX - vp.left + 14, y = e.clientY - vp.top + 14;
+  if (x + tip.offsetWidth > vp.width - 8) x = e.clientX - vp.left - tip.offsetWidth - 10;
+  if (y + tip.offsetHeight > vp.height - 8) y = e.clientY - vp.top - tip.offsetHeight - 10;
+  tip.style.left = x + "px";
+  tip.style.top = y + "px";
+}
+renderer.domElement.addEventListener("pointermove", onPointerMove);
+renderer.domElement.addEventListener("pointerleave", () => { $("tip").style.display = "none"; });
+
+// ---------- kontroller ----------
 
 function syncControls() {
   applyStatic();
@@ -592,9 +717,8 @@ function syncControls() {
   $("cutTop").value = String(state.cutTop);
   $("deciles").checked = state.deciles;
   $("qr").checked = state.qr;
-  $("labels").checked = state.labels;
+  $("stack").checked = state.stack;
   $("moreCountries").checked = state.more;
-  labelRenderer.domElement.style.display = state.labels ? "" : "none";
   $("moreLink").href = `m.html?c=${state.countries[0] || "SE"}&m=${M_SHORT[state.measure]}&lang=${getLang()}`;
   $("scaleUnit").textContent = t("scale_per_mm") + " " + (state.measure === "carbon" ? "tCO₂e" : "USD");
   $("scale").value = fmtScaleInput();
@@ -671,7 +795,7 @@ $("scale").addEventListener("change", (e) => {
 $("scaleNice").addEventListener("click", () => { state.scales[state.measure] = MEASURE[state.measure].scale; syncControls(); rebuild(); });
 $("baseSize").addEventListener("change", (e) => { state.baseSize = Math.max(60, Math.min(256, +e.target.value || 180)); syncControls(); rebuild(); });
 $("clampMm").addEventListener("change", (e) => { state.clampMm = Math.max(0, +e.target.value || 0); rebuild(); });
-$("labels").addEventListener("change", (e) => { state.labels = e.target.checked; labelRenderer.domElement.style.display = state.labels ? "" : "none"; persist(); });
+$("stack").addEventListener("change", (e) => { state.stack = e.target.checked; rebuild(); });
 $("moreCountries").addEventListener("change", (e) => { state.more = e.target.checked; renderCountryList(); persist(); });
 $("langBtn").addEventListener("click", () => { toggleLang(); syncControls(); rebuild(); });
 
