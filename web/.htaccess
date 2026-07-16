@@ -1,0 +1,11 @@
+# Cache-styrning: JS-moduler/HTML/JSON revalideras alltid (304 om oförändrade)
+# så att en deploy aldrig blandar gamla och nya moduler i webbläsaren.
+# Tunga, sällan ändrade filer cacheas en vecka.
+<IfModule mod_headers.c>
+  <FilesMatch "\.(js|mjs|html|json)$">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+  <FilesMatch "\.(ttf|png|stl)$">
+    Header set Cache-Control "public, max-age=604800"
+  </FilesMatch>
+</IfModule>
