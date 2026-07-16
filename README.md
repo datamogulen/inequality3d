@@ -55,8 +55,13 @@ Sidan är självförsörjande (three.js och opentype.js ligger vendorerade i
 
 - **Mått**: inkomst (pre-tax nationalinkomst per vuxen), förmögenhet
   (netto per vuxen), CO₂e-avtryck (per person, konsumtion + investeringar).
-- **Valuta**: PPP-USD eller marknadskurs-USD (eller lokal valuta, då utan
-  jämförbarhet). **Höjdskalan är fast och gemensam per mått** – 1 mm är
+  Alla penningserier i **fasta priser** (inflationsjusterade, en gemensam
+  PPP-kurs) – årsanimeringen (▶-knappen) visar real utveckling 1990→nu.
+- **Länder**: 25 kärnländer + **Världen** (WID:s globala fördelning,
+  WO-PPP) synliga direkt; ~150 ytterligare länder bakom "Fler länder"-valet,
+  med WID:s datakvalitetspoäng (1–5) synlig per land.
+- **Valuta**: PPP-USD eller marknadskurs-USD. **Höjdskalan är fast och
+  gemensam per mått** – 1 mm är
   lika mycket oavsett land (standard: inkomst 1 mm = 5 000 USD, förmögenhet
   1 mm = 50 000 USD, CO₂ 1 mm = 1 ton/år). Enheten står ingraverad i
   botten. Extrema toppar kapas vid en gräns (standard 90 mm; syns i
@@ -112,14 +117,12 @@ Sidan är självförsörjande (three.js och opentype.js ligger vendorerade i
 
 | Källa | Fil | Vad |
 |---|---|---|
-| **WID.world** | `data/fetch_wid.py` → `web/data/wid_*.json` | `aptinc992j` (inkomst), `ahweal992j` (förmögenhet), `lpfghg999i` (CO₂e-avtryck, Chancel 2021 – samma underlag som Oxfams rapporter), `xlcusp/xlcusx` (PPP/MER). 1990–2024 (CO₂ t.o.m. 2019). |
-| **Världsbanken PIP** | `data/fetch_pip.py` → `web/data/pip_*.json` | 100 percentiler av disponibel inkomst/konsumtion per person (survey, PPP-USD). Bra kontrast till WID: surveydata fångar inte toppen. |
+| **WID.world** | `data/fetch_wid.py` → `web/data/wid_*.json` | `aptinc992j` (inkomst), `ahweal992j` (förmögenhet), `lpfghg999i` + komponenter (CO₂e, Chancel), `xlcusp/xlcusx` (PPP/MER), kvalitetspoäng (dq). 1990–2024 (CO₂ t.o.m. 2019). Alla länder WID täcker (~180) + Världen (WO-PPP). |
 
-Kända skillnader källorna emellan (avsiktligt synliga i verktyget):
-WID:s inkomstbegrepp är nationalinkomst före skatt per vuxen (inkl.
-kapital), PIP:s är disponibel inkomst/konsumtion per person – PIP ger
-mycket lägre toppar. För Kina/Indien är PIP **konsumtion**, märks i
-etiketten. WID:s CO₂-fördelningar har låg datakvalitet enligt WID själva.
+(Världsbanken PIP fanns som alternativ källa t.o.m. v4 men togs bort ur
+UI:t – survey-baserad disponibel inkomst gav så annorlunda toppar att
+jämförelsen förvirrade mer än den lärde. `data/fetch_pip.py` finns kvar.)
+WID:s CO₂-fördelningar har låg datakvalitet enligt WID själva.
 
 Rådata cachas i `data/raw/` (gitignorerad) – radera en fil där för att
 tvinga omhämtning. WID hämtas via samma API som deras officiella

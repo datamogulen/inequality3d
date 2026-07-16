@@ -13,7 +13,7 @@ import qrcode from "../vendor/qrcode.mjs";
 
 // ---------- konstanter ----------
 
-const STATE_V = 4; // bumpa för att nollställa inaktuella val i localStorage
+const STATE_V = 5; // bumpa för att nollställa inaktuella val i localStorage
 const PALETTE = ["#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e34948", "#e87ba4", "#eb6834"];
 const PART_COLORS = {
   base: 0xd9d2c2, text: 0xd9a021, numbers: 0x2f2f2f, mean: 0x1c1c1c,
@@ -34,7 +34,6 @@ const state = {
   v: STATE_V,
   measure: "income",
   currency: "ppp",
-  source: "wid",
   year: 2023,
   countries: ["SE", "US", "CN", "IN"],
   shapes: ["strip"],
@@ -46,12 +45,14 @@ const state = {
   govMode: "flat", // "flat" = Chancel (lika/person), "income" = Oxfam
   debt: false,     // förmögenhet: skuldlager under förhöjt nollplan
   qr: true,        // QR-kod på undersidan
+  labels: true,    // 3D-etiketter
+  more: false,     // visa alla länder (varierande datakvalitet)
 };
 try {
   const saved = JSON.parse(localStorage.getItem("ineq3d") || "{}");
   if (saved.v === STATE_V) Object.assign(state, saved);
   else {
-    for (const k of ["measure", "currency", "source", "year", "countries", "cutTop"]) {
+    for (const k of ["measure", "year", "countries", "cutTop"]) {
       if (saved[k] !== undefined) state[k] = saved[k];
     }
     if (Array.isArray(saved.shapes)) {
@@ -59,6 +60,7 @@ try {
       if (sh.length) state.shapes = sh;
     }
   }
+  if (state.currency !== "mer") state.currency = "ppp";
 } catch { /* ignorera trasig lagring */ }
 function persist() { localStorage.setItem("ineq3d", JSON.stringify(state)); }
 
@@ -168,7 +170,8 @@ function carbonRows(countryData, series) {
   // inkomstkvot för Oxfam-läget (y_p / ȳ, valutaoberoende)
   let incomeRatio = null;
   if (state.govMode === "income") {
-    const inc = getSeries(countryData, "wid", "income", series.year, "lcu");
+    // kvoten y_p/ȳ är valutaoberoende – PPP duger
+    const inc = getSeries(countryData, "income", series.year, "ppp");
     if (inc) {
       incomeRatio = new Map(inc.brackets.map((b) => [`${b.p0}|${b.p1}`, b.vRaw / inc.mean]));
     }
@@ -235,10 +238,8 @@ function qrModules(code, plate) {
 
 // bottentextens tre rader, skalade att passa plattan (minus QR-zon)
 function bottomText(font, plate, cName, qrZone) {
-  const m = MEASURE[state.measure];
-  const cur = state.currency === "ppp" ? "PPP" : state.currency === "mer" ? "USD" : t("lcu_short");
-  const curTag = MEASURE_INFO[state.measure].isMoney ? " " + cur : "";
-  const unit = state.measure === "carbon" ? t("unit_tco2") : (state.currency === "lcu" ? t("lcu_short") : "USD");
+  const curTag = MEASURE_INFO[state.measure].isMoney ? (state.currency === "mer" ? " USD" : " PPP") : "";
+  const unit = state.measure === "carbon" ? t("unit_tco2") : "USD";
   const perMm = 1 / state.scales[state.measure];
   const perMmNum = perMm >= 1000 ? Math.round(perMm).toLocaleString("sv-SE") : String(+perMm.toFixed(2));
   const lines = [
@@ -285,7 +286,7 @@ function decileGlyphs(boldFont, depth) {
 }
 
 function makeModel(countryData, shape, font, boldFont) {
-  const series = getSeries(countryData, state.source, state.measure, state.year, state.currency);
+  const series = getSeries(countryData, state.measure, state.year, state.currency);
   if (!series) return null;
   const opts = shapeOpts(shape);
   const scale = state.scales[state.measure];
@@ -449,9 +450,7 @@ async function rebuild() {
       if (state.measure === "carbon" && shape === "strip" && !notes.includes("layers")) {
         warns.add(t("warn_nolayers")(cName));
       }
-      const srcNote = state.source === "pip"
-        ? ` · ${t("lbl_pip")(series.welfare === "consumption" ? t("welfare_cons") : t("welfare_inc"))}` : "";
-      div.innerHTML = `<span class="big">${cName}</span> <span class="dim">${series.year} · ${t("shape_" + shape)}${srcNote}</span><br>
+      div.innerHTML = `<span class="big">${cName}</span> <span class="dim">${series.year} · ${t("shape_" + shape)}</span><br>
         <span class="dim">${bits.join(" · ")}</span>`;
       const label = new CSS2DObject(div);
       const halfD = built.plate.kind === "circle" ? built.plate.r : built.plate.d / 2;
@@ -462,19 +461,17 @@ async function rebuild() {
       const fm = t("file_measure")[state.measure];
       currentModels.push({
         code: cd.code, name: cName, shape, parts, series, group,
-        basename: `${cd.code}_${state.source}_${fm}_${series.year}_${t("shape_" + shape)}`,
+        basename: `${cd.code}_${fm}_${series.year}_${t("shape_" + shape)}`,
       });
     }
     if (any) col++;
   }
-  if (state.source === "pip") warns.add(t("warn_pip"));
   if (state.measure === "carbon") warns.add(t("warn_carbon"));
-  if (state.currency === "lcu" && MEASURE_INFO[state.measure].isMoney) warns.add(t("warn_lcu"));
 
   renderExports();
   renderWarnings([...warns]);
   const perMm = 1 / state.scales[state.measure];
-  const unit = state.measure === "carbon" ? "tCO₂e" : (state.currency === "lcu" ? t("lcu_short") : "USD");
+  const unit = state.measure === "carbon" ? "tCO₂e" : "USD";
   status.textContent = t("status2")(currentModels.length, t("measure_" + state.measure), fmtNum(perMm), unit);
   fitCameraIfNeeded();
   persist();
@@ -563,13 +560,9 @@ const $ = (id) => document.getElementById(id);
 function syncControls() {
   applyStatic();
   $("langBtn").textContent = t("langBtn");
-  if (state.source === "pip") { state.measure = "income"; state.currency = "ppp"; }
   document.querySelectorAll('input[name="measure"]').forEach((r) => {
     r.checked = r.value === state.measure;
-    r.disabled = state.source === "pip" && r.value !== "income";
   });
-  $("source").value = state.source;
-  $("currency").disabled = state.source === "pip";
   $("currency").value = state.currency;
   $("currencyRow").style.display = MEASURE_INFO[state.measure].isMoney ? "flex" : "none";
   $("govRow").style.display = state.measure === "carbon" ? "flex" : "none";
@@ -587,8 +580,11 @@ function syncControls() {
   $("cutTop").value = String(state.cutTop);
   $("deciles").checked = state.deciles;
   $("qr").checked = state.qr;
+  $("labels").checked = state.labels;
+  $("moreCountries").checked = state.more;
+  labelRenderer.domElement.style.display = state.labels ? "" : "none";
   $("moreLink").href = `m.html?c=${state.countries[0] || "SE"}&m=${M_SHORT[state.measure]}&lang=${getLang()}`;
-  $("scaleUnit").textContent = t("scale_per_mm") + " " + (state.measure === "carbon" ? "tCO₂e" : (state.currency === "lcu" ? t("lcu_short") : "USD"));
+  $("scaleUnit").textContent = t("scale_per_mm") + " " + (state.measure === "carbon" ? "tCO₂e" : "USD");
   $("scale").value = fmtScaleInput();
   $("baseSize").value = state.baseSize;
   $("clampMm").value = state.clampMm;
@@ -604,7 +600,10 @@ function renderCountryList() {
   const el = $("countries");
   el.innerHTML = "";
   assignColors();
-  for (const c of index.countries) {
+  const visible = index.countries.filter(
+    (c) => c.core !== false || state.more || state.countries.includes(c.code)
+  );
+  for (const c of visible) {
     const lab = document.createElement("label");
     lab.className = "row";
     const cb = document.createElement("input");
@@ -621,6 +620,14 @@ function renderCountryList() {
     const col = colorByCountry.get(c.code);
     sw.style.background = col ? "#" + col.getHexString() : "#e4e0d6";
     lab.append(cb, sw, document.createTextNode(" " + countryName(c)));
+    if (c.core === false && c.quality > 0) {
+      const q = document.createElement("span");
+      q.className = "hint";
+      q.style.marginLeft = "auto";
+      q.textContent = `dq ${c.quality}`;
+      q.title = t("dq_title");
+      lab.appendChild(q);
+    }
     el.appendChild(lab);
   }
 }
@@ -628,7 +635,6 @@ function renderCountryList() {
 document.querySelectorAll('input[name="measure"]').forEach((r) =>
   r.addEventListener("change", () => { state.measure = r.value; syncControls(); rebuild(); }));
 $("currency").addEventListener("change", (e) => { state.currency = e.target.value; syncControls(); rebuild(); });
-$("source").addEventListener("change", (e) => { state.source = e.target.value; syncControls(); rebuild(); });
 $("govMode").addEventListener("change", (e) => { state.govMode = e.target.value; rebuild(); });
 $("debt").addEventListener("change", (e) => { state.debt = e.target.checked; rebuild(); });
 $("qr").addEventListener("change", (e) => { state.qr = e.target.checked; rebuild(); });
@@ -653,7 +659,37 @@ $("scale").addEventListener("change", (e) => {
 $("scaleNice").addEventListener("click", () => { state.scales[state.measure] = MEASURE[state.measure].scale; syncControls(); rebuild(); });
 $("baseSize").addEventListener("change", (e) => { state.baseSize = Math.max(60, Math.min(256, +e.target.value || 180)); syncControls(); rebuild(); });
 $("clampMm").addEventListener("change", (e) => { state.clampMm = Math.max(0, +e.target.value || 0); rebuild(); });
+$("labels").addEventListener("change", (e) => { state.labels = e.target.checked; labelRenderer.domElement.style.display = state.labels ? "" : "none"; persist(); });
+$("moreCountries").addEventListener("change", (e) => { state.more = e.target.checked; renderCountryList(); persist(); });
 $("langBtn").addEventListener("click", () => { toggleLang(); syncControls(); rebuild(); });
+
+// ---------- play: animera årsutvecklingen ----------
+let playing = false;
+async function playLoop() {
+  while (playing) {
+    const maxYear = state.measure === "carbon" ? 2019 : 2024;
+    if (state.year >= maxYear) break;
+    state.year++;
+    $("year").value = state.year;
+    $("yearLabel").textContent = state.year;
+    await rebuild();
+    await new Promise((r) => setTimeout(r, 220));
+  }
+  playing = false;
+  $("playBtn").textContent = "▶";
+}
+$("playBtn").addEventListener("click", () => {
+  if (playing) { playing = false; $("playBtn").textContent = "▶"; return; }
+  const maxYear = state.measure === "carbon" ? 2019 : 2024;
+  if (state.year >= maxYear) {
+    state.year = 1990;
+    $("year").value = 1990;
+    $("yearLabel").textContent = "1990";
+  }
+  playing = true;
+  $("playBtn").textContent = "⏸";
+  playLoop();
+});
 
 // ---------- start ----------
 

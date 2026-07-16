@@ -12,13 +12,7 @@ export async function loadIndex() {
 
 export async function loadCountry(code) {
   if (!cache.has(code)) {
-    const wid = await (await fetch(`data/wid_${code}.json`)).json();
-    let pip = null;
-    try {
-      const r = await fetch(`data/pip_${code}.json`);
-      if (r.ok) pip = await r.json();
-    } catch { /* pip saknas för landet */ }
-    cache.set(code, { ...wid, pip });
+    cache.set(code, await (await fetch(`data/wid_${code}.json`)).json());
   }
   return cache.get(code);
 }
@@ -41,10 +35,9 @@ export const MEASURE_INFO = {
   },
 };
 
-// Returnerar { brackets: [{p0,p1,v}], year, ... } för land+källa+mått+år.
+// Returnerar { brackets: [{p0,p1,v}], year, ... } för land+mått+år.
 // year = närmast tillgängliga år; värden i USD (PPP/MER) eller ton.
-export function getSeries(country, source, measure, wantYear, currency) {
-  if (source === "pip") return getPipSeries(country, measure, wantYear, currency);
+export function getSeries(country, measure, wantYear, currency) {
   const m = country.measures[measure];
   if (!m) return null;
   // närmaste tillgängliga år
@@ -55,9 +48,8 @@ export function getSeries(country, source, measure, wantYear, currency) {
   const yi = m.years.indexOf(best);
 
   let divisor = 1;
-  const info = MEASURE_INFO[measure];
-  if (info.isMoney && currency !== "lcu") {
-    const xr = currency === "ppp" ? country.xrates?.pppUsd : country.xrates?.merUsd;
+  if (MEASURE_INFO[measure].isMoney) {
+    const xr = currency === "mer" ? country.xrates?.merUsd : country.xrates?.pppUsd;
     if (!xr) return null;
     divisor = xr.lcuPer;
   }
@@ -110,30 +102,4 @@ export function getGovFootprint(country, year) {
     if (Math.abs(g.years[i] - year) < Math.abs(g.years[bi] - year)) bi = i;
   }
   return g.values[bi];
-}
-
-// PIP: 100 hela centiler, disponibel inkomst/konsumtion per person och år,
-// PPP-USD. Bara måttet inkomst och valutan PPP finns.
-function getPipSeries(country, measure, wantYear, currency) {
-  const pip = country.pip;
-  if (!pip || measure !== "income" || currency !== "ppp") return null;
-  let best = pip.years[0];
-  for (const y of pip.years) {
-    if (Math.abs(y - wantYear) < Math.abs(best - wantYear)) best = y;
-  }
-  const yi = pip.years.indexOf(best);
-  const brackets = [];
-  for (let i = 0; i < 100; i++) {
-    const v = pip.values[i]?.[yi];
-    if (v != null) brackets.push({ p0: i, p1: i + 1, v: Math.max(0, v), vRaw: v });
-  }
-  if (!brackets.length) return null;
-  const median = brackets.find((b) => b.p0 <= 50 && b.p1 > 50)?.v ?? 0;
-  const max = Math.max(...brackets.map((b) => b.v));
-  const mean = brackets.reduce((s, b) => s + b.vRaw * (b.p1 - b.p0), 0) /
-    brackets.reduce((s, b) => s + (b.p1 - b.p0), 0);
-  return {
-    brackets, year: best, median, max, mean, clampedNeg: false, dropped: 0,
-    welfare: pip.welfare?.[best] ?? "income",
-  };
 }

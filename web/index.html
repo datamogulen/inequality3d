@@ -120,14 +120,6 @@
         <select id="currency">
           <option value="ppp" data-i18n="cur_ppp">PPP-USD</option>
           <option value="mer" data-i18n="cur_mer">USD, marknadskurs</option>
-          <option value="lcu" data-i18n="cur_lcu">Lokal valuta (ej jämförbart!)</option>
-        </select>
-      </div>
-      <div class="kv">
-        <span data-i18n="source">Datakälla</span>
-        <select id="source">
-          <option value="wid" data-i18n="src_wid">WID.world</option>
-          <option value="pip" data-i18n="src_pip">Världsbanken PIP</option>
         </select>
       </div>
       <div class="kv" id="govRow">
@@ -144,7 +136,10 @@
 
     <fieldset>
       <legend><span data-i18n="fs_year">År:</span> <span id="yearLabel"></span></legend>
-      <input type="range" id="year" min="1990" max="2024" value="2023" step="1">
+      <div style="display:flex; gap:8px; align-items:center">
+        <button class="btn" id="playBtn" title="Spela upp 1990–nu">▶</button>
+        <input type="range" id="year" min="1990" max="2024" value="2023" step="1" style="flex:1">
+      </div>
       <p class="hint" id="yearHint"></p>
     </fieldset>
 
@@ -155,6 +150,7 @@
         <button data-set="SE,NO,DK,FI" data-i18n="q_nordics">Norden</button>
         <button data-set="" data-i18n="q_clear">Rensa</button>
       </div>
+      <label class="row"><input type="checkbox" id="moreCountries"> <span data-i18n="more_countries">Fler länder (varierande datakvalitet)</span></label>
       <div id="countries"></div>
     </fieldset>
 
@@ -165,6 +161,7 @@
       <label class="row"><input type="checkbox" name="shape" value="square"> <span data-i18n="sh_square">Kvadrat (10 × 10 rader)</span></label>
       <label class="row"><input type="checkbox" id="deciles" checked> <span data-i18n="deciles_lbl">Decilskåror + graverade nummer (remsa)</span></label>
       <label class="row"><input type="checkbox" id="qr" checked> <span data-i18n="qr_lbl">QR-kod till infosida på undersidan</span></label>
+      <label class="row"><input type="checkbox" id="labels" checked> <span data-i18n="labels_lbl">Visa etiketter i 3D-vyn</span></label>
     </fieldset>
 
     <fieldset>

@@ -85,6 +85,7 @@ const T = {
     rows: {
       median: "Median (p50)", mean: "Medelvärde", p90: "Percentil 90", p99: "Percentil 99",
       top10: "Topp 10 % – andel av totalen", top1: "Topp 1 % – andel av totalen", gini: "Gini-koefficient",
+      dq: "WID:s datakvalitetspoäng (1–5)",
     },
     statsNote: "Percentilvärden är gruppgenomsnitt. Inkomst = nationalinkomst före skatt per vuxen (equal-split); förmögenhet = nettoförmögenhet per vuxen; CO₂e = personligt växthusgasavtryck per person. Penningvärden i PPP-USD.",
     compH: (y) => `Avtryckets tre delar ${y} (medel, ton CO₂e/person)`,
@@ -172,10 +173,10 @@ befolkningen som tjänar under snittet. <b>Det vita lodräta strecket</b> delar
 mycket som den betydligt mindre gruppen till höger (i Sverige går gränsen runt p75, i USA
 runt p88).</p>
 <p>I 3D-utskriften är höjdskalan fast (t.ex. 1 mm = 5 000 USD, står i botten), så
-modeller från olika länder kan jämföras direkt. Toppen (rikaste 1 %) visas som gruppens
-viktade genomsnitt för att modellen ska gå att skriva ut – annars vore den meterhög.</p>
-<p>Som alternativ källa finns Världsbankens PIP (survey-baserad disponibel inkomst/konsumtion)
-– den ger lägre toppar eftersom enkäter sällan fångar de rikaste.</p>`,
+modeller från olika länder kan jämföras direkt. Alla år är i <b>fasta priser</b>
+(inflationsjusterade) med en och samma PPP-kurs, så en animering över åren visar real
+utveckling. Toppen (rikaste 1 %) visas som gruppens viktade genomsnitt för att modellen
+ska gå att skriva ut – annars vore den meterhög.</p>`,
       wealth: `<h2>Vad modellen visar</h2>
 <p>Varje stapel är genomsnittlig <b>nettoförmögenhet per vuxen</b> (tillgångar minus
 skulder) i en percentil, från lägst till högst, från World Inequality Database.
@@ -210,7 +211,6 @@ I 3D-utskriften är skalan fast (1 mm = 1 ton CO₂e/år).</p>`,
       income: [
         ["https://wid.world/", "World Inequality Database (WID.world)"],
         ["https://wid.world/methodology/", "WID – metodologi (DINA)"],
-        ["https://pip.worldbank.org/", "Världsbanken – Poverty and Inequality Platform"],
         ["https://wir2022.wid.world/", "World Inequality Report 2022"],
       ],
       wealth: [
@@ -234,6 +234,7 @@ I 3D-utskriften är skalan fast (1 mm = 1 ton CO₂e/år).</p>`,
     rows: {
       median: "Median (p50)", mean: "Mean", p90: "Percentile 90", p99: "Percentile 99",
       top10: "Top 10% – share of total", top1: "Top 1% – share of total", gini: "Gini coefficient",
+      dq: "WID data-quality score (1–5)",
     },
     statsNote: "Percentile values are group averages. Income = pre-tax national income per adult (equal-split); wealth = net wealth per adult; CO₂e = personal greenhouse-gas footprint per person. Money in PPP USD.",
     compH: (y) => `The three components of the footprint ${y} (mean, tonnes CO₂e/person)`,
@@ -320,10 +321,10 @@ average. <b>The white vertical mark</b> splits the <i>total income</i> into two 
 halves: the population to its left collectively earns as much as the far smaller group to
 its right (around p75 in Sweden, p88 in the US).</p>
 <p>In the 3D print the height scale is fixed (e.g. 1 mm = 5,000 USD, engraved underneath),
-so models from different countries compare directly. The top 1% is shown as the group's
-weighted average to keep the model printable – otherwise it would be metres tall.</p>
-<p>The World Bank's PIP (survey-based disposable income/consumption) is available as an
-alternative source – it yields much lower tops, as surveys rarely capture the richest.</p>`,
+so models from different countries compare directly. All years are in <b>constant prices</b>
+(inflation-adjusted) using a single PPP rate, so animating over the years shows real
+change. The top 1% is shown as the group's weighted average to keep the model printable –
+otherwise it would be metres tall.</p>`,
       wealth: `<h2>What the model shows</h2>
 <p>Each bar is the average <b>net wealth per adult</b> (assets minus debts) in one
 percentile, lowest to highest, from the World Inequality Database. The lowest percentiles
@@ -357,7 +358,6 @@ In the 3D print the scale is fixed (1 mm = 1 tonne CO₂e/yr).</p>`,
       income: [
         ["https://wid.world/", "World Inequality Database (WID.world)"],
         ["https://wid.world/methodology/", "WID – methodology (DINA)"],
-        ["https://pip.worldbank.org/", "World Bank – Poverty and Inequality Platform"],
         ["https://wir2022.wid.world/", "World Inequality Report 2022"],
       ],
       wealth: [
@@ -455,6 +455,7 @@ async function render() {
     brackets.reduce((s, b) => s + Math.max(0, b.v) * w(b), 0);
   const g = gini(brackets);
 
+  const idxC = (idx.countries || []).find((x) => x.code === CODE);
   const rows = [
     [tr.rows.median, fmtVal(at(50) ?? 0, M, LANG)],
     [tr.rows.mean, fmtVal(mean, M, LANG)],
@@ -463,6 +464,7 @@ async function render() {
     [tr.rows.top10, (shareAbove(90) * 100).toFixed(1) + " %"],
     [tr.rows.top1, (shareAbove(99) * 100).toFixed(1) + " %"],
     [tr.rows.gini, g != null ? g.toFixed(2) : "–"],
+    ...(idxC && idxC.quality > 0 ? [[tr.rows.dq, String(idxC.quality)]] : []),
   ];
   $("stats").innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
   $("statsH").textContent = tr.statsH(year);
