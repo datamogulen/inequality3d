@@ -149,8 +149,14 @@ percentilfördelning, och kan därför inte driva modellerna här.</p>`],
 sorterad från lägst (percentil 1) till högst (percentil 100), med finare upplösning i
 toppen. Måttet är <b>nationalinkomst före skatt per vuxen</b> från World Inequality
 Database (WID) – det inkluderar kapitalinkomster och är bredare än taxerad förvärvsinkomst.
-Par delar lika ("equal-split"). Skåror markerar deciler; det mörka strecket ligger på
-<b>medelvärdets</b> höjd – notera hur långt över medianen det ligger.</p>
+Par delar lika ("equal-split"). Skåror markerar deciler. <b>Det mörka vågräta strecket</b>
+ligger på <i>medelvärdets</i> höjd: materialet som sticker upp över strecket fyller exakt
+luften under det – hyvlar man av topparna och fyller dalarna blir remsan platt på
+strecknivån. Notera hur långt över medianen (p50) medlet ligger, och hur stor andel av
+befolkningen som tjänar under snittet. <b>Det vita lodräta strecket</b> delar
+<i>inkomstsumman</i> i två lika halvor: befolkningen till vänster har tillsammans lika
+mycket som den betydligt mindre gruppen till höger (i Sverige går gränsen runt p75, i USA
+runt p88).</p>
 <p>I 3D-utskriften är höjdskalan fast (t.ex. 1 mm = 5 000 USD, står i botten), så
 modeller från olika länder kan jämföras direkt. Toppen (rikaste 1 %) visas som gruppens
 viktade genomsnitt för att modellen ska gå att skriva ut – annars vore den meterhög.</p>
@@ -162,7 +168,10 @@ skulder) i en percentil, från lägst till högst, från World Inequality Databa
 De lägsta percentilerna är ofta <i>negativa</i> (skulder överstiger tillgångarna) –
 i appen kan skulderna visas som ett eget rött lager under ett förhöjt nollplan.</p>
 <p>Förmögenhet är mycket ojämnare fördelad än inkomst: medianen är ofta bara en bråkdel
-av medelvärdet (det mörka strecket). Höjdskalan är fast (t.ex. 1 mm = 50 000 USD).</p>`,
+av medelvärdet (det mörka vågräta strecket). Det vita lodräta strecket delar den samlade
+förmögenheten i två lika halvor – gränsen ligger typiskt runt percentil 85–95: de nedersta
+nio tiondelarna äger tillsammans ungefär lika mycket som den översta tiondelen. Höjdskalan
+är fast (t.ex. 1 mm = 50 000 USD).</p>`,
       carbon: `<h2>Vad modellen visar</h2>
 <p>Varje stapel är det genomsnittliga <b>växthusgasavtrycket per person</b> (ton CO₂e/år)
 i en percentil, sorterat från lägst till högst avtryck. Datat är Lucas Chancels
@@ -177,9 +186,11 @@ alltså <i>både privata och offentliga</i> investeringar – samma avgränsning
 Naturvårdsverkets konsumtionsstatistik), fördelade i proportion till <i>förmögenhet</i>:
 den som äger x % av kapitalet tillskrivs x % av investeringsutsläppen. Det är denna
 del som dominerar toppens enorma avtryck.</p>
-<p>WID bedömer själva datakvaliteten för fördelningarna som låg – tolka toppen som
-storleksordning snarare än exakt värde. I 3D-utskriften är skalan fast
-(1 mm = 1 ton CO₂e/år).</p>`,
+<p>Det mörka vågräta strecket ligger på medelavtryckets höjd; det vita lodräta strecket
+delar de totala utsläppen i två lika halvor – hälften av landets konsumtionsutsläpp kommer
+från befolkningen till höger om strecket. WID bedömer själva datakvaliteten för
+fördelningarna som låg – tolka toppen som storleksordning snarare än exakt värde.
+I 3D-utskriften är skalan fast (1 mm = 1 ton CO₂e/år).</p>`,
     },
     sources: {
       income: [
@@ -274,8 +285,13 @@ here.</p>`],
 lowest (percentile 1) to highest (percentile 100), with finer resolution at the top. The
 measure is <b>pre-tax national income per adult</b> from the World Inequality Database
 (WID) – it includes capital income and is broader than taxable earnings. Couples split
-equally. Grooves mark deciles; the dark stripe sits at the height of the <b>mean</b> –
-note how far above the median it lies.</p>
+equally. Grooves mark deciles. <b>The dark horizontal stripe</b> sits at the height of the
+<i>mean</i>: the material poking above the stripe exactly fills the air below it – plane
+off the peaks into the valleys and the strip becomes flat at stripe level. Note how far
+above the median (p50) the mean lies, and how large a share of the population earns below
+average. <b>The white vertical mark</b> splits the <i>total income</i> into two equal
+halves: the population to its left collectively earns as much as the far smaller group to
+its right (around p75 in Sweden, p88 in the US).</p>
 <p>In the 3D print the height scale is fixed (e.g. 1 mm = 5,000 USD, engraved underneath),
 so models from different countries compare directly. The top 1% is shown as the group's
 weighted average to keep the model printable – otherwise it would be metres tall.</p>
@@ -287,7 +303,9 @@ percentile, lowest to highest, from the World Inequality Database. The lowest pe
 are often <i>negative</i> (debts exceed assets) – the app can show debt as a separate red
 layer below a raised zero plane.</p>
 <p>Wealth is far more unequally distributed than income: the median is often a fraction
-of the mean (the dark stripe). The height scale is fixed (e.g. 1 mm = 50,000 USD).</p>`,
+of the mean (the dark horizontal stripe). The white vertical mark splits total wealth into
+two equal halves – typically around percentile 85–95: the bottom nine tenths together own
+about as much as the top tenth. The height scale is fixed (e.g. 1 mm = 50,000 USD).</p>`,
       carbon: `<h2>What the model shows</h2>
 <p>Each bar is the average <b>greenhouse-gas footprint per person</b> (tonnes CO₂e/yr) in
 one percentile, sorted from lowest to highest footprint. The data are Lucas Chancel's
@@ -302,9 +320,11 @@ i.e. <i>both private and public</i> investments – the same boundary as e.g. th
 EPA's consumption statistics), attributed in proportion to <i>wealth</i>: owning x% of
 the capital stock attributes x% of investment emissions. This component dominates the
 enormous footprints at the top.</p>
-<p>WID itself rates the data quality of these distributions as low – read the top as an
-order of magnitude rather than an exact value. In the 3D print the scale is fixed
-(1 mm = 1 tonne CO₂e/yr).</p>`,
+<p>The dark horizontal stripe sits at the mean footprint; the white vertical mark splits
+total emissions into two equal halves – half the country's consumption emissions come from
+the population to the right of the mark. WID itself rates the data quality of these
+distributions as low – read the top as an order of magnitude rather than an exact value.
+In the 3D print the scale is fixed (1 mm = 1 tonne CO₂e/yr).</p>`,
     },
     sources: {
       income: [

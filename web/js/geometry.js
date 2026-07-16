@@ -202,7 +202,25 @@ export function buildStrip(brackets, opts) {
       zones.push({ gx0, gx1, polys });
     }
   }
-  const zoneCuts = zones.flatMap((z) => [z.gx0, z.gx1]);
+  // 50/50-markör: lodrätt streck vid percentilen där halva totalsumman
+  // ligger till vänster. Egen del ("split"), något högre än grafen lokalt.
+  const SPLIT_W = 1.4;
+  let slot = null;
+  if (opts.splitP != null) {
+    let xs = xAt(Math.min(Math.max(opts.splitP, 1), 98.9));
+    for (const z of zones) { // knuffa ut ur nummerzoner
+      if (xs + SPLIT_W / 2 > z.gx0 && xs - SPLIT_W / 2 < z.gx1) {
+        xs = xs - z.gx0 < z.gx1 - xs ? z.gx0 - SPLIT_W / 2 - 0.2 : z.gx1 + SPLIT_W / 2 + 0.2;
+      }
+    }
+    slot = { x0: xs - SPLIT_W / 2, x1: xs + SPLIT_W / 2, xs };
+  }
+  const zoneCuts = [
+    ...zones.flatMap((z) => [z.gx0, z.gx1]),
+    ...(slot ? [slot.x0, slot.x1] : []),
+  ];
+  const inCutout = (x) =>
+    zones.some((z) => x >= z.gx0 && x <= z.gx1) || (slot && x >= slot.x0 && x <= slot.x1);
 
   let maxH = 0, clamped = 0;
   for (const b of brackets) {
@@ -214,14 +232,19 @@ export function buildStrip(brackets, opts) {
     if (b.minLen && xb - xa < b.minLen) xa = xb - b.minLen;
     maxH = Math.max(maxH, topOf(b));
     if (b.clamped) clamped++;
-    // dela stapelns x-intervall vid zongränser; utelämna zon-delarna
+    // dela stapelns x-intervall vid zon-/markörgränser; utelämna urtagen
     const cuts = [xa, ...zoneCuts.filter((c) => c > xa && c < xb).sort((a, c) => a - c), xb];
     for (let i = 0; i + 1 < cuts.length; i++) {
       const sxa = cuts[i], sxb = cuts[i + 1];
-      const mid = (sxa + sxb) / 2;
-      if (zones.some((z) => mid >= z.gx0 && mid <= z.gx1)) continue; // byggs av gravyren
+      if (inCutout((sxa + sxb) / 2)) continue; // byggs av gravyr/markör
       putSegs(b.segs, sxa, sxb + EPS, Infinity);
     }
+  }
+
+  if (slot) {
+    const b = bracketAt(((slot.xs - x0) / L) * 100);
+    const h = (b ? topOf(b) : 0) + 2; // sticker upp 2 mm – tydlig markör
+    put("split", slot.x0, slot.x1, y0, y1, BASE_TOP - BASE_OVERLAP, BASE_TOP + h);
   }
 
   // gravyrkolumner i zonerna (lager + ficka + nummer-inlägg).

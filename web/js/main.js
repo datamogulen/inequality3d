@@ -17,7 +17,7 @@ const STATE_V = 3; // bumpa för att nollställa inaktuella val i localStorage
 const PALETTE = ["#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e34948", "#e87ba4", "#eb6834"];
 const PART_COLORS = {
   base: 0xd9d2c2, text: 0xd9a021, numbers: 0x2f2f2f, mean: 0x1c1c1c,
-  gov: 0x9a9a92, inv: 0x584a9e, debt: 0xc23434,
+  gov: 0x9a9a92, inv: 0x584a9e, debt: 0xc23434, split: 0xffffff,
 };
 // Fasta "snygga" enheter per mått – 1 mm betyder alltid lika mycket.
 const MEASURE = {
@@ -261,6 +261,19 @@ function bottomText(font, plate, cName, qrZone) {
 }
 
 // Fetstil + stora siffror: tunna streck överlever inte tvåfärgstryck.
+// Percentil där halva totalsumman ligger till vänster (50/50-markören)
+function splitPercentile(brackets) {
+  const total = brackets.reduce((s, b) => s + b.v * (b.p1 - b.p0), 0);
+  if (total <= 0) return null;
+  let cum = 0;
+  for (const b of brackets) {
+    const add = b.v * (b.p1 - b.p0);
+    if (cum + add >= total / 2 && b.v > 0) return b.p0 + (total / 2 - cum) / b.v;
+    cum += add;
+  }
+  return null;
+}
+
 function decileGlyphs(boldFont, depth) {
   const size = Math.min(9, depth * 0.24);
   const out = [];
@@ -329,7 +342,9 @@ function makeModel(countryData, shape, font, boldFont) {
     }
     if (state.deciles) opts.decileGlyphs = decileGlyphs(boldFont, opts.depth);
     opts.meanH = meanH > 0.5 ? meanH : null;
+    opts.splitP = splitPercentile(series.brackets);
     built = buildStrip(bracketRows, opts);
+    built.splitP = opts.splitP;
     built.merged = bracketRows.some((b) => b.merged);
     built.clamped = bracketRows.some((b) => b.clamped);
   } else {
@@ -354,7 +369,7 @@ function makeModel(countryData, shape, font, boldFont) {
 
   const cCol = colorByCountry.get(countryData.code);
   const parts = [];
-  const order = ["graph", "gov", "cons", "inv", "debt", "mean", "numbers"];
+  const order = ["graph", "gov", "cons", "inv", "debt", "mean", "split", "numbers"];
   for (const key of order) {
     const tris = built.parts[key];
     if (!tris || !tris.length) continue;
@@ -429,6 +444,7 @@ async function rebuild() {
       div.className = "model-label";
       const bits = [t("lbl_top")(fmtH(built.stats.maxH))];
       if (built.clamped) bits.push(t("lbl_clampnote")(state.clampMm));
+      if (built.splitP) bits.push(t("lbl_split")(Math.round(built.splitP)));
       if (built.merged) bits.push(t("lbl_merged")(cutLabel()));
       if (state.measure === "carbon" && shape === "strip" && !notes.includes("layers")) {
         warns.add(t("warn_nolayers")(cName));
@@ -496,7 +512,7 @@ function fitCameraIfNeeded() {
 
 // ---------- export ----------
 
-const PART_ORDER = ["graph", "gov", "cons", "inv", "debt", "mean", "base", "numbers", "text"];
+const PART_ORDER = ["graph", "gov", "cons", "inv", "debt", "mean", "split", "base", "numbers", "text"];
 
 function renderExports() {
   const el = document.getElementById("exports");
