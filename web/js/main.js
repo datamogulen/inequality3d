@@ -161,31 +161,43 @@ function rowsToSegs(rows, layers, scale, clampMm, baseZ = () => 0) {
   });
 }
 
-// CO2: rader med gov/cons/inv (Chancel- eller Oxfam-allokering av gov)
-function carbonRows(countryData, series) {
+// CO2: rader med gov/cons/inv (Chancel- eller Oxfam-allokering av gov).
+// Länder med förberäknad gov-serie per klass (Världen: olika länders
+// klumpsummor blandas i varje global klass) använder den direkt; där är
+// carbonCons redan enbart privat konsumtion och Oxfam-läget gäller inte.
+function carbonRows(countryData, series, warns) {
   const cons = getComponent(countryData, "carbonCons", series.year);
   const inv = getComponent(countryData, "carbonInv", series.year);
+  const govSeries = getComponent(countryData, "carbonGov", series.year);
   const govpc = getGovFootprint(countryData, series.year);
-  if (!cons || !inv || govpc == null) return null;
-  // inkomstkvot för Oxfam-läget (y_p / ȳ, valutaoberoende)
+  if (!cons || !inv || (govpc == null && !govSeries)) return null;
   let incomeRatio = null;
-  if (state.govMode === "income") {
+  if (state.govMode === "income" && !govSeries) {
     // kvoten y_p/ȳ är valutaoberoende – PPP duger
     const inc = getSeries(countryData, "income", series.year, "ppp");
     if (inc) {
       incomeRatio = new Map(inc.brackets.map((b) => [`${b.p0}|${b.p1}`, b.vRaw / inc.mean]));
     }
   }
+  if (state.govMode === "income" && govSeries && warns) warns.add(t("warn_wo_oxfam"));
   const rows = [];
   for (const b of series.brackets) {
     const key = `${b.p0}|${b.p1}`;
     const c = cons.map.get(key), i = inv.map.get(key);
     if (c == null || i == null) continue;
-    const ratio = incomeRatio ? (incomeRatio.get(key) ?? 1) : 1;
+    let gov, priv;
+    if (govSeries) {
+      gov = govSeries.map.get(key) ?? 0;
+      priv = c; // redan exkl. offentligt
+    } else {
+      const ratio = incomeRatio ? (incomeRatio.get(key) ?? 1) : 1;
+      gov = govpc * ratio;
+      priv = c - govpc;
+    }
     rows.push({
       p0: b.p0, p1: b.p1,
-      gov: Math.max(0, govpc * ratio),
-      cons: Math.max(0, c - govpc),
+      gov: Math.max(0, gov),
+      cons: Math.max(0, priv),
       inv: Math.max(0, i),
     });
   }
@@ -285,7 +297,7 @@ function decileGlyphs(boldFont, depth) {
   return out;
 }
 
-function makeModel(countryData, shape, font, boldFont) {
+function makeModel(countryData, shape, font, boldFont, warns) {
   const series = getSeries(countryData, state.measure, state.year, state.currency);
   if (!series) return null;
   const opts = shapeOpts(shape);
@@ -297,7 +309,7 @@ function makeModel(countryData, shape, font, boldFont) {
   if (shape === "strip") {
     let bracketRows;
     if (state.measure === "carbon") {
-      const rows = carbonRows(countryData, series);
+      const rows = carbonRows(countryData, series, warns);
       if (rows) {
         const merged = mergeTopRows(rows, state.cutTop, ["gov", "cons", "inv"]);
         // Oxfam-läget ändrar summan per percentil; medel är oförändrat
@@ -426,7 +438,7 @@ async function rebuild() {
     let any = false;
     for (let si = 0; si < state.shapes.length; si++) {
       const shape = state.shapes[si];
-      const model = makeModel(cd, shape, font, boldFont);
+      const model = makeModel(cd, shape, font, boldFont, warns);
       if (!model) { warns.add(t("warn_nodata")(cName)); continue; }
       any = true;
       const { series, built, parts, notes } = model;

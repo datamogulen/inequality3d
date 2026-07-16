@@ -90,6 +90,7 @@ const T = {
     statsNote: "Percentilvärden är gruppgenomsnitt. Inkomst = nationalinkomst före skatt per vuxen (equal-split); förmögenhet = nettoförmögenhet per vuxen; CO₂e = personligt växthusgasavtryck per person. Penningvärden i PPP-USD.",
     compH: (y) => `Avtryckets tre delar ${y} (medel, ton CO₂e/person)`,
     compRows: { gov: "Offentlig konsumtion", cons: "Privat konsumtion", inv: "Investeringar (kapitalägande)" },
+    covNote: (pct) => `Världsfördelningen är aggregerad ur ~170 länders percentiler viktade med befolkning (${pct} % av världsbefolkningen täcks; de som saknas är mikrostater).`,
     compNote: "I appen kan de tre delarna skrivas ut som lager i olika färger. Offentlig konsumtion fördelas lika per person i Chancels huvudscenario; Oxfam/SEI fördelar i stället hela nationens konsumtionsutsläpp proportionellt mot inkomst.",
     faqH: "Fördjupning – vanliga frågor",
     faq: {
@@ -239,6 +240,7 @@ I 3D-utskriften är skalan fast (1 mm = 1 ton CO₂e/år).</p>`,
     statsNote: "Percentile values are group averages. Income = pre-tax national income per adult (equal-split); wealth = net wealth per adult; CO₂e = personal greenhouse-gas footprint per person. Money in PPP USD.",
     compH: (y) => `The three components of the footprint ${y} (mean, tonnes CO₂e/person)`,
     compRows: { gov: "Public consumption", cons: "Private consumption", inv: "Investments (capital ownership)" },
+    covNote: (pct) => `The world distribution is aggregated from ~170 countries' percentiles weighted by population (${pct}% of world population covered; the missing ones are microstates).`,
     compNote: "In the app the three components can be printed as layers in different colours. Public consumption is split equally per person in Chancel's benchmark; Oxfam/SEI instead allocate the nation's entire consumption emissions in proportion to income.",
     faqH: "Deep dive – common questions",
     faq: {
@@ -471,31 +473,43 @@ async function render() {
   $("statsNote").textContent = tr.statsNote;
   $("statsCard").style.display = "block";
 
-  if (M === "carbon" && cd.measures.carbonCons && cd.measures.carbonInv && cd.govFootprint) {
+  if (M === "carbon" && cd.measures.carbonCons && cd.measures.carbonInv) {
     const comp = (key) => {
       const mm = cd.measures[key];
+      if (!mm) return null;
       const yy = mm.years.includes(year) ? mm.years.indexOf(year) : mm.years.length - 1;
       let s = 0, ww = 0;
       idx.brackets.forEach(([p0, p1], i) => {
         const v = mm.values[i]?.[yy];
         if (v != null) { s += v * (p1 - p0); ww += (p1 - p0); }
       });
-      return s / ww;
+      return ww ? s / ww : null;
     };
-    const gi = cd.govFootprint.years.indexOf(
-      cd.govFootprint.years.includes(year) ? year : cd.govFootprint.years[cd.govFootprint.years.length - 1]);
-    const gov = cd.govFootprint.values[gi];
-    const consTotal = comp("carbonCons");
+    let gov, cons;
+    if (cd.measures.carbonGov) { // förberäknat (Världen): cons är redan privat
+      gov = comp("carbonGov");
+      cons = comp("carbonCons");
+    } else if (cd.govFootprint) {
+      const gi = cd.govFootprint.years.indexOf(
+        cd.govFootprint.years.includes(year) ? year : cd.govFootprint.years[cd.govFootprint.years.length - 1]);
+      gov = cd.govFootprint.values[gi];
+      cons = Math.max(0, comp("carbonCons") - gov);
+    }
     const inv = comp("carbonInv");
-    const rows2 = [
-      [tr.compRows.gov, gov.toFixed(1)],
-      [tr.compRows.cons, Math.max(0, consTotal - gov).toFixed(1)],
-      [tr.compRows.inv, inv.toFixed(1)],
-    ];
-    $("comp").innerHTML = rows2.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
-    $("compH").textContent = tr.compH(year);
-    $("compNote").textContent = tr.compNote;
-    $("compCard").style.display = "block";
+    if (gov != null && cons != null && inv != null) {
+      const rows2 = [
+        [tr.compRows.gov, gov.toFixed(1)],
+        [tr.compRows.cons, cons.toFixed(1)],
+        [tr.compRows.inv, inv.toFixed(1)],
+      ];
+      $("comp").innerHTML = rows2.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
+      $("compH").textContent = tr.compH(year);
+      let note = tr.compNote;
+      const cov = cd.carbonCoverage && cd.carbonCoverage[year];
+      if (cov) note += " " + tr.covNote(Math.round(cov * 100));
+      $("compNote").textContent = note;
+      $("compCard").style.display = "block";
+    }
   }
 }
 
