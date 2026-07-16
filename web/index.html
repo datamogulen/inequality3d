@@ -151,8 +151,10 @@
     <fieldset>
       <legend data-i18n="fs_shape">Form</legend>
       <label class="row"><input type="checkbox" name="shape" value="strip" checked> <span data-i18n="sh_strip">Remsa (percentil-staket)</span></label>
+      <label class="row"><input type="checkbox" name="shape" value="cum"> <span data-i18n="sh_cum">Kumulativ remsa</span></label>
       <label class="row"><input type="checkbox" name="shape" value="spiral"> <span data-i18n="sh_spiral">Spiral (rikast i mitten)</span></label>
       <label class="row"><input type="checkbox" name="shape" value="square"> <span data-i18n="sh_square">Kvadrat (10 × 10 rader)</span></label>
+      <label class="row"><input type="checkbox" id="deciles" checked> <span data-i18n="deciles_lbl">Decilfenor + nummer (remsa)</span></label>
     </fieldset>
 
     <fieldset>
@@ -171,14 +173,13 @@
 
     <fieldset>
       <legend data-i18n="fs_scale">Skala &amp; storlek</legend>
-      <div class="kv"><span data-i18n="scaleName">Höjdskala</span>
+      <div class="kv"><span data-i18n="scaleName">Höjd: 1 mm =</span>
         <span><input type="number" id="scale" step="any" min="0"> <span id="scaleUnit"></span></span></div>
       <div class="quick">
-        <button id="scaleMedian" data-i18n="btn_median">Median → 3 mm</button>
-        <button id="scaleMax" data-i18n="btn_max">Högsta → 80 mm</button>
+        <button id="scaleNice" data-i18n="btn_nice">Standardskala</button>
       </div>
-      <div class="kv"><span data-i18n="baseSize">Modellbredd (mm)</span><input type="number" id="baseSize" value="100" min="30" max="256"></div>
-      <div class="kv"><span data-i18n="clamp">Kapa höjd vid (mm, 0 = av)</span><input type="number" id="clampMm" value="0" min="0"></div>
+      <div class="kv"><span data-i18n="baseSize">Modellstorlek (mm)</span><input type="number" id="baseSize" value="180" min="60" max="256"></div>
+      <div class="kv"><span data-i18n="clamp">Kapa höjd vid (mm, 0 = av)</span><input type="number" id="clampMm" value="90" min="0"></div>
       <p class="hint" data-i18n="scale_hint"></p>
     </fieldset>
 

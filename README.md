@@ -56,10 +56,17 @@ Sidan är självförsörjande (three.js och opentype.js ligger vendorerade i
 - **Mått**: inkomst (pre-tax nationalinkomst per vuxen), förmögenhet
   (netto per vuxen), CO₂e-avtryck (per person, konsumtion + investeringar).
 - **Valuta**: PPP-USD eller marknadskurs-USD (eller lokal valuta, då utan
-  jämförbarhet). **Höjdskalan är fix per mått** – 1 mm är lika mycket
-  oavsett land, så modellerna är direkt jämförbara.
-- **Tre former**, valfri kombination:
-  - *Remsa*: percentil 0–100 längs x, höjd ∝ värde.
+  jämförbarhet). **Höjdskalan är fast och gemensam per mått** – 1 mm är
+  lika mycket oavsett land (standard: inkomst 1 mm = 5 000 USD, förmögenhet
+  1 mm = 50 000 USD, CO₂ 1 mm = 1 ton/år). Enheten står ingraverad i
+  botten. Extrema toppar kapas vid en gräns (standard 90 mm; syns i
+  etiketten).
+- **Fyra former**, valfri kombination:
+  - *Remsa*: percentil 0–100 längs x, höjd ∝ värde. **Decilgränser** märks
+    med tunna fenor (egen färg) från bas upp till grafhöjd, och **decilnummer
+    1–10 graveras i toppen** (följer terrängen).
+  - *Kumulativ remsa*: viktad kumulativ summa fattigast→rikast (toppar vid
+    medelvärdet) – en fysisk Lorenz-kurva som direkt visar ojämlikheten.
   - *Spiral*: fattigast ytterst, rikast i mitten (arkimedisk spiral).
   - *Kvadrat*: 10 rader × 10 centiler; fattigaste raden närmast,
     rikaste centilen längst bort till höger.
@@ -76,14 +83,15 @@ Sidan är självförsörjande (three.js och opentype.js ligger vendorerade i
   som vill se hela dramat.
 - **Kapa höjd** finns också kvar som alternativ (kapade staplar plattas
   av och räknas i etiketten).
-- **STL-export** per modell: mm-skala, plint med landsnamnet graverat
-  (0,6 mm djupt) i botten, speglat så det läses rättvänt underifrån.
-  Font: Open Sans Bold (öppen licens). Dessutom en **inläggs-STL**
-  (”text”) med bokstäverna som egen solid i samma koordinatsystem – den
-  jackar i gravyren och kan skrivas ut i annan färg (krymp 0,05–0,1 mm
-  med XY-kompensering i slicern om den sitter trångt; skriv ut med
-  ovansidan mot bädden som filen ligger). Geometrin är verifierad
-  vattentät (`node scripts/check_geometry.mjs`).
+- **Bottenplatta**: sticker bara ut i percentil-riktningen (över p100 /
+  under p0), inte på långsidorna, så två remsor kan läggas kant i kant och
+  jämföras exakt. I botten graveras tre rader – **land**, **mått + per
+  vuxen/person + valuta**, och **skalan** (”1 MM = 5000 USD”) – speglat så
+  det läses rättvänt underifrån. Font: **Open Sans Regular** (Apache 2.0).
+- **STL-export i separata delar för flerfärgstryck** (importera ihop i
+  slicern, samma koordinatsystem, sätt färg per del): *graf*, *botten*,
+  *fenor*, *nummer* (decilgravyren) och *text* (bottengravyren). Geometrin
+  är verifierad vattentät (`node scripts/check_geometry.mjs`).
 - **Språk**: svenska/engelska (auto via webbläsaren, växlare i sidofältet,
   `?lang=sv`/`?lang=en` fungerar också). Gravyren följer valt språk.
 
@@ -106,12 +114,15 @@ R-paket (nyckeln ligger öppet i paketet).
 
 ## Kod
 
-- `web/js/geometry.js` – vattentäta solider (svepta lådor längs bana,
-  plint, gravyr). Allt i mm, Z uppåt; delarna överlappar 0,06–0,1 mm så
-  slicern kan unionera.
-- `web/js/text.js` – opentype.js → THREE-shapes, speglade, med
-  mikrojitter per glyf (bryter exakt kollinjäritet som annars ger
-  T-korsningar i earcut vid extrudering – lärdom!).
+- `web/js/geometry.js` – vattentäta solider. Slutna axeljusterade lådor
+  (`boxTris`) för remsa/kvadrat/fenor; svept låda för spiral. All gravyr
+  (bottentext + decilnummer) byggs med **scanline**: glyfer → polygoner →
+  täckta y-intervall per x-kolumn → ficka + inlägg som följer ytan. Robust
+  mot överlappande bokstäver, till skillnad från earcut-med-hål.
+- `web/js/text.js` – opentype.js → THREE-shapes (Open Sans Regular),
+  flerradiga block, speglade för undersidan. Glyfer dedupas (exakta
+  dubbelpunkter, t.ex. i N, gav annars degenererade väggar → oparade
+  kanter) men INTE kollinjärt (det förstörde bokstäver – lärdom!).
 - `web/js/data.js` – laddning/normalisering, PPP/MER-konvertering.
 - `web/js/stl.js` – binär STL-skrivare.
 - `web/js/main.js` – UI + Three.js-scen.
