@@ -503,7 +503,7 @@ export function buildPlinth(plate, textShapes, qrRects = []) {
   const lamina = [];
   const polys = textShapes && textShapes.length ? polysFromShapes(textShapes, 8) : [];
   const xMax = plate.kind === "circle" ? plate.r : plate.w / 2;
-  const dx = 0.3;
+  const dx = 0.22; // finare raster → jämnare bokstavskanter och bättre inläggspassning
   const n = Math.max(1, Math.round((2 * xMax) / dx));
   const w = (2 * xMax) / n;
   for (let i = 0; i < n; i++) {

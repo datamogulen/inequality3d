@@ -291,7 +291,8 @@ function qrModules(code, plate) {
   return { rects, size: sz + 2 * quiet * mod, cx, url };
 }
 
-// bottentextens tre rader, skalade att passa plattan (minus QR-zon)
+// bottentextens tre rader, skalade att passa plattan (minus QR-zon).
+// Fetstil + så stort som får plats: tunna streck överlever inte tvåfärgstryck.
 function bottomText(font, plate, cName, qrZone) {
   const curTag = MEASURE_INFO[state.measure].isMoney ? (state.currency === "mer" ? " USD" : " PPP") : "";
   const unit = state.measure === "carbon" ? t("unit_tco2") : "USD";
@@ -306,7 +307,7 @@ function bottomText(font, plate, cName, qrZone) {
   const qrW = qrZone ? qrZone.size + 4 : 0;
   const availW = (isRect ? plate.w - 14 : plate.r * 1.5) - qrW;
   const availH = isRect ? Math.min(plate.d - 5, plate.w * 0.5) : plate.r * 1.4;
-  let size = Math.min(7, (availH - 2 * 1.4) / 3);
+  let size = Math.min(8.6, availH / 3.8); // 3.8 = 3,1 radhöjder + 0,7 radavstånd
   const mk = (sz) => textBlock(font, lines.map((tx, i) => ({ text: tx, size: i === 0 ? sz * 1.1 : sz })), true, sz * 0.35);
   let blk = mk(size);
   if (blk.width > availW && blk.width > 0) { size *= availW / blk.width; blk = mk(size); }
@@ -469,7 +470,7 @@ function makeModel(countryData, shape, font, boldFont, warns, mode = "display") 
   } else {
     const cName = countryName(countryData).toUpperCase();
     const qrZone = qrModules(countryData.code, built.plate);
-    const txt = bottomText(font, built.plate, cName, qrZone);
+    const txt = bottomText(boldFont, built.plate, cName, qrZone);
     parts.push({ key: "base", geoms: buildPlinth(built.plate, txt.shapes, qrZone ? qrZone.rects : []), color: new THREE.Color(PART_COLORS.base) });
     const textGeoms = buildInlay(txt.shapes);
     if (qrZone) textGeoms.push(trisToGeometry(qrInlayTris(qrZone.rects)));
