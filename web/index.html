@@ -95,6 +95,28 @@
     color: #7a4a00; background: #fff6e6; border: 1px solid #eda100;
     padding: 4px 10px; border-radius: 6px; display: none;
   }
+  /* prominent Om-länk högst upp i panelen */
+  .toplink { display: block; margin: 2px 0 12px; font-size: 13px; font-weight: 600; }
+  .toplink a { color: var(--accent); text-decoration: none; }
+  .toplink a:hover { text-decoration: underline; }
+  /* flytande knappar i 3D-vyn: dölj/visa kontroller + spela */
+  #toggleControls, #playBtnFloat {
+    position: absolute; z-index: 6; font: inherit; cursor: pointer;
+    border: 1px solid var(--line); background: rgba(255,255,255,.92);
+    border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.12); color: var(--ink);
+  }
+  #toggleControls { top: 10px; left: 10px; width: 38px; height: 38px; font-size: 18px; line-height: 1; }
+  #playBtnFloat { top: 10px; left: 56px; height: 38px; padding: 0 13px; font-size: 16px; display: none; }
+  body.controls-hidden #sidebar { display: none; }
+  body.controls-hidden #playBtnFloat { display: inline-block; }
+  /* mobil: panelen ovanför, 3D-vyn under; vrid till liggande → panelen döljs (JS) */
+  @media (max-width: 760px) {
+    body { flex-direction: column; }
+    #sidebar { width: 100%; min-width: 0; height: auto; max-height: 50vh;
+      border-right: none; border-bottom: 1px solid var(--line); }
+    #viewport { min-height: 50vh; }
+    body.controls-hidden #viewport { min-height: 100vh; }
+  }
 </style>
 <script type="importmap">
 {
@@ -118,6 +140,8 @@
         <button class="btn" id="langBtn">English</button>
       </span>
     </div>
+
+    <p class="toplink"><a id="aboutLinkTop" href="m.html" data-i18n="about_link">ⓘ Om verktyget, metod &amp; vanliga frågor →</a></p>
 
     <fieldset>
       <legend data-i18n="fs_measure">Mått</legend>
@@ -212,14 +236,14 @@
 
     <p class="hint" data-i18n="sources_note"></p>
 
-    <p class="hint" style="font-size:13px"><a id="aboutLink" href="m.html" data-i18n="about_link">Om verktyget →</a></p>
-
-    <p class="hint" style="font-size:13px"><a id="moreLink" href="m.html" data-i18n="more_link">Fördjupning: metod, källor &amp; vanliga frågor →</a></p>
+    <p class="hint" style="font-size:13px"><a id="moreLink" href="m.html" data-i18n="more_link">Nyckeltal &amp; metod för valt land →</a></p>
 
     <p class="hint"><span data-i18n="code_pre">Kod: </span><a href="https://github.com/datamogulen/inequality3d">github.com/datamogulen/inequality3d</a><span data-i18n="code_post"> – byggd av Claude utifrån en enda prompt (se README).</span></p>
   </div>
 
   <div id="viewport">
+    <button id="toggleControls" data-i18n-title="toggle_lbl" title="Visa/dölj kontroller">✕</button>
+    <button id="playBtnFloat" title="Spela upp åren">▶</button>
     <div id="canvas3d"></div>
     <div id="status">Laddar …</div>
     <div id="tip"></div>

@@ -819,7 +819,7 @@ function syncControls() {
   $("qr").checked = state.qr;
   $("stack").checked = state.stack;
   $("moreCountries").checked = state.more;
-  $("aboutLink").href = `m.html?lang=${getLang()}`;
+  $("aboutLinkTop").href = `m.html?lang=${getLang()}`;
   $("moreLink").href = `m.html?c=${state.countries[0] || "SE"}&m=${M_SHORT[state.measure]}&lang=${getLang()}`;
   $("scaleUnit").textContent = t("scale_per_mm") + " " + (state.measure === "carbon" ? "tCO₂e" : "USD");
   $("scale").value = fmtScaleInput();
@@ -935,10 +935,15 @@ async function playLoop() {
     await new Promise((r) => setTimeout(r, 220));
   }
   playing = false;
-  $("playBtn").textContent = "▶";
+  setPlayIcons("▶");
 }
-$("playBtn").addEventListener("click", () => {
-  if (playing) { playing = false; $("playBtn").textContent = "▶"; return; }
+function setPlayIcons(sym) {
+  $("playBtn").textContent = sym;
+  const f = document.getElementById("playBtnFloat");
+  if (f) f.textContent = sym;
+}
+function togglePlay() {
+  if (playing) { playing = false; setPlayIcons("▶"); return; }
   const maxYear = state.measure === "carbon" ? 2019 : 2024;
   if (state.year >= maxYear) {
     state.year = 1990;
@@ -946,9 +951,34 @@ $("playBtn").addEventListener("click", () => {
     $("yearLabel").textContent = "1990";
   }
   playing = true;
-  $("playBtn").textContent = "⏸";
+  setPlayIcons("⏸");
   playLoop();
-});
+}
+$("playBtn").addEventListener("click", togglePlay);
+document.getElementById("playBtnFloat")?.addEventListener("click", togglePlay);
+
+// ---------- mobil: dölj/visa kontrollpanelen ----------
+function setControlsHidden(hidden) {
+  document.body.classList.toggle("controls-hidden", hidden);
+  const btn = document.getElementById("toggleControls");
+  if (btn) btn.textContent = hidden ? "☰" : "✕";
+}
+document.getElementById("toggleControls")?.addEventListener("click", () =>
+  setControlsHidden(!document.body.classList.contains("controls-hidden")));
+// vrid telefonen till liggande (låg höjd) → dölj kontrollerna automatiskt.
+// Reagerar bara när läget korsar gränsen, så en manuell toggle inte skrivs över.
+const mqLandscape = window.matchMedia("(orientation: landscape) and (max-height: 520px)");
+let wasLandscape = null;
+function evalOrientation() {
+  const m = mqLandscape.matches;
+  if (m === wasLandscape) return;
+  wasLandscape = m;
+  setControlsHidden(m);
+}
+mqLandscape.addEventListener?.("change", evalOrientation);
+window.addEventListener("orientationchange", evalOrientation);
+window.addEventListener("resize", evalOrientation);
+evalOrientation();
 
 // ---------- start ----------
 

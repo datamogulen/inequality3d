@@ -194,6 +194,23 @@ bakom valet ”Fler länder” i appen.</p>
 iterationer) av <a href="https://hedin.it/">Björn Hedin</a>, forskare vid KTH. Koden är
 öppen källkod: <a href="https://github.com/datamogulen/inequality3d">github.com/datamogulen/inequality3d</a>
 (ursprungsprompten citeras i README). Fritt att använda och dela.</p>`,
+      aiFootprint: (lang) => `
+<h2>AI-avtrycket – vad kostade bygget i energi och CO₂?</h2>
+<p><b>Transparensnotis:</b> siffrorna nedan är en grov <i>egen</i> uppskattning som
+AI-assistenten (Claude) gjort utifrån byggsessionernas egna loggar – inte en officiell
+siffra från Anthropic, som inte publicerar energi per token. Behandla dem som
+storleksordning, inte exakta tal.</p>
+<p>Verktyget byggdes i en lång dialog med Claude. Sessionerna omfattade cirka 1&nbsp;320
+modellsvar och genererade ~2,1&nbsp;miljoner output-tokens (text och kod). Dessutom kodades
+~11,8&nbsp;miljoner input-tokens från grunden, plus ~585&nbsp;miljoner ”cache-lästa” tokens –
+den växande kontexten som läses om varje tur (kraftigt rabatterad i beräkning, och därför
+inte likställd med nykodade tokens).</p>
+<p>Med rimliga men osäkra antaganden (energi per token är osäker med mer än en tiopotens)
+landar det på grovt <b>5–60 kWh</b>, vilket vid en global elmix (~400 g CO₂e/kWh) motsvarar
+ungefär <b>2–23 kg CO₂e</b> – i storleksordning som att köra en bensinbil <b>20–190 km</b>.
+På svensk elmix (~30 g/kWh) blir CO₂-avtrycket en tiondel av det. Kostnad ≠ energi:
+cache-läsning är kraftigt prisrabatterad och speglar inte energin proportionellt. Ett
+fullständigt räkneark med alla antaganden finns i projektets referensdokument.</p>`,
     },
     method: {
       income: `<h2>Vad modellen visar</h2>
@@ -381,6 +398,24 @@ iterations) by <a href="https://hedin.it/">Björn Hedin</a>, researcher at KTH R
 Institute of Technology. The code is open source:
 <a href="https://github.com/datamogulen/inequality3d">github.com/datamogulen/inequality3d</a>
 (the original prompt is quoted in the README). Free to use and share.</p>`,
+      aiFootprint: (lang) => `
+<h2>The AI footprint – what did building this cost in energy and CO₂?</h2>
+<p><b>Transparency note:</b> the figures below are a rough estimate made by the AI
+assistant (Claude) itself from the build sessions' own logs – not an official figure from
+Anthropic, which does not publish energy per token. Treat them as an order of magnitude,
+not exact numbers.</p>
+<p>The tool was built through a long dialogue with Claude. The sessions comprised about
+1,320 model responses and generated ~2.1&nbsp;million output tokens (text and code). On top
+of that, ~11.8&nbsp;million input tokens were encoded from scratch, plus ~585&nbsp;million
+“cache-read” tokens – the growing context re-read every turn (heavily discounted in
+computation, and so not equivalent to freshly encoded tokens).</p>
+<p>With reasonable but uncertain assumptions (per-token energy is uncertain by more than a
+factor of ten), this comes to roughly <b>5–60 kWh</b>, which at a global electricity mix
+(~400 g CO₂e/kWh) corresponds to about <b>2–23 kg CO₂e</b> – of the same order as driving a
+petrol car <b>20–190 km</b>. On a Swedish electricity mix (~30 g/kWh) the CO₂ footprint is a
+tenth of that. Cost ≠ energy: cache reads are heavily price-discounted and do not mirror the
+energy proportionally. A full spreadsheet with every assumption is in the project's
+reference document.</p>`,
     },
     method: {
       income: `<h2>What the model shows</h2>
@@ -486,11 +521,17 @@ async function render() {
   $("appLink").href = "./?lang=" + LANG;
   $("srcH").textContent = tr.srcH;
 
-  if (ABOUT) { // om-sida för hela projektet: ingen landsdata, samlade källor
+  if (ABOUT) { // om-sida för hela projektet: ingen landsdata, samlade källor + fördjupning
     document.title = tr.about.title + " – Inequality in 3D";
     $("title").textContent = tr.about.title;
     $("subtitle").textContent = tr.about.sub;
-    $("method").innerHTML = tr.about.body(LANG);
+    $("method").innerHTML = tr.about.body(LANG) + tr.about.aiFootprint(LANG);
+    // fördjupning: alla vanliga frågor (CO₂ + förmögenhet) samlade på om-sidan
+    const faqItems = [...(tr.faq.carbon || []), ...(tr.faq.wealth || [])];
+    $("faqH").textContent = tr.faqH;
+    $("faq").innerHTML = faqItems.map(([q, a]) =>
+      `<details><summary>${q}</summary><div>${a}</div></details>`).join("");
+    $("faqCard").style.display = "block";
     const seen = new Set(), all = [];
     for (const key of ["income", "wealth", "carbon"]) {
       for (const [u, l] of tr.sources[key]) if (!seen.has(u)) { seen.add(u); all.push([u, l]); }
@@ -498,7 +539,6 @@ async function render() {
     $("sources").innerHTML = all.map(([u, l]) => `<li><a href="${u}">${l}</a></li>`).join("");
     $("statsCard").style.display = "none";
     $("compCard").style.display = "none";
-    $("faqCard").style.display = "none";
     return;
   }
 
