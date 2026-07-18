@@ -7,7 +7,7 @@ import {
 } from "./geometry.js";
 import { loadFont, loadBoldFont, textShapes, textBlock, translateShapes } from "./text.js";
 import { exportSTL } from "./stl.js";
-import { t, getLang, toggleLang, applyStatic, countryName } from "./i18n.js";
+import { t, getLang, setLang, applyStatic, countryName } from "./i18n.js";
 import qrcode from "../vendor/qrcode.mjs";
 
 // ---------- konstanter ----------
@@ -796,7 +796,11 @@ renderer.domElement.addEventListener("pointerleave", () => { $("tip").style.disp
 
 function syncControls() {
   applyStatic();
-  $("langBtn").textContent = t("langBtn");
+  for (const fl of document.querySelectorAll("#flaggor .flagga")) {
+    const aktiv = fl.dataset.sprak === getLang();
+    fl.style.opacity = aktiv ? "1" : "0.4";
+    fl.style.outline = aktiv ? "1px solid #7aa7ff" : "none";
+  }
   document.querySelectorAll('input[name="measure"]').forEach((r) => {
     r.checked = r.value === state.measure;
   });
@@ -910,7 +914,8 @@ $("baseSize").addEventListener("change", (e) => { state.baseSize = Math.max(60, 
 $("clampMm").addEventListener("change", (e) => { state.clampMm = Math.max(0, +e.target.value || 0); rebuild(); });
 $("stack").addEventListener("change", (e) => { state.stack = e.target.checked; rebuild(); });
 $("moreCountries").addEventListener("change", (e) => { state.more = e.target.checked; renderCountryList(); persist(); });
-$("langBtn").addEventListener("click", () => { toggleLang(); syncControls(); rebuild(); });
+for (const fl of document.querySelectorAll("#flaggor .flagga"))
+  fl.addEventListener("click", () => { setLang(fl.dataset.sprak); syncControls(); rebuild(); });
 $("shareBtn").addEventListener("click", async () => {
   const url = location.origin + location.pathname + stateToQuery();
   try {

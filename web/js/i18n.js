@@ -160,20 +160,105 @@ export const I18N = {
     file_measure: { income: "income", wealth: "wealth", carbon: "co2" },
     file_text: "text",
   },
+  ja: {
+    // OBS: gravyrtexterna (short_*, per_*, unit_tco2, lcu_short, file_*) hålls på
+    // engelska/ASCII — gravyrfonten (Open Sans) saknar japanska tecken.
+    htmlLang: "ja", langBtn: "Svenska",
+    docTitle: "3Dで見る格差 – 所得・資産・CO₂",
+    title: "3Dで見る格差",
+    sub: "WID.worldのパーセンタイルデータ · 画面と3Dプリント用",
+    fs_measure: "指標",
+    m_income: "所得（税引前、成人1人あたり）",
+    m_wealth: "資産（純額、成人1人あたり）",
+    m_carbon: "CO₂eフットプリント（1人あたり）",
+    currency: "通貨",
+    cur_ppp: "PPP米ドル", cur_mer: "米ドル（市場レート）", cur_lcu: "現地通貨（比較不可！）",
+    source: "データソース", src_wid: "WID.world", src_pip: "世界銀行 PIP",
+    fs_year: "年:",
+    yearHint: "その国にない年は最も近い年を使用します。",
+    yearHintCarbon: "CO₂データは2019年まで。ない年は最も近い年を使用します。",
+    fs_countries: "国", q_nordics: "北欧", q_clear: "クリア",
+    more_countries: "その他の国（データ品質はさまざま）",
+    dq_title: "所得データのWID品質スコア1–5（5が最良）",
+    stack_lbl: "国を前後に並べる（小さい順に手前）",
+    share_lbl: "このビューへのリンクをコピー",
+    tip_decile: "十分位",
+    fs_shape: "形",
+    sh_strip: "ストリップ（パーセンタイルの柵）",
+    sh_spiral: "スパイラル（最富裕層が中心）",
+    sh_square: "正方形（10×10行）",
+    deciles_lbl: "十分位の溝＋彫刻番号（ストリップ）",
+    qr_lbl: "底面に情報ページへのQRコード",
+    gov_lbl: "公共消費",
+    gov_flat: "1人あたり均等（Chancel）", gov_income: "所得比例（Oxfam）",
+    debt_lbl: "負債を表示（ゼロ面の下に赤いバー）",
+    fs_top: "トップ",
+    top_skip: "トップの表示", top_none: "完全な詳細（百分位）",
+    top_1: "トップ1%の加重平均", top_01: "トップ0.1%の平均", top_001: "トップ0.01%の平均",
+    top_hint: "トップ層は加重平均の高さの1本のバーにまとめられ、実際の位置と実寸の底面で表示されます（トップ1%は約1 mm薄；印刷用に最小0.8 mm）。完全詳細では百分位を表示 — トップは実寸でメートル級になります。（世界銀行PIPは整数センタイルのみ — 平均はトップ1%にのみ適用。）",
+    fs_scale: "スケールとサイズ",
+    scaleName: "高さ: 1 mm =",
+    scale_per_mm: "1 mmあたり、単位:",
+    btn_nice: "標準スケール",
+    zscale_lbl: "Zスケール（ドラッグ）",
+    baseSize: "モデルサイズ（mm）",
+    clamp: "高さの上限（mm、0=なし）",
+    scale_hint: "高さスケールは全ての国で共通・固定 — 1 mmは常に同じ量を意味します。極端に高いトップは上の上限で切られます（ラベルに表示）。",
+    short_income: "INCOME", short_wealth: "WEALTH", short_carbon: "CO2 FOOTPRINT",
+    per_income: "ADULT", per_wealth: "ADULT", per_carbon: "PERSON",
+    unit_tco2: "TONNE CO2/YR", lcu_short: "LOCAL",
+    part_graph: "グラフ", part_base: "土台", part_numbers: "番号", part_text: "テキスト",
+    part_gov: "公共", part_cons: "消費", part_inv: "投資",
+    part_debt: "負債", part_mean: "平均", part_split: "50/50",
+    file_graph: "graph", file_base: "base", file_numbers: "numbers",
+    file_gov: "public", file_cons: "consumption", file_inv: "investments",
+    file_debt: "debt", file_mean: "mean", file_split: "50-50",
+    fs_export: "エクスポート（Bambu用STL）",
+    btn_exportAll: "表示中の全てをエクスポート",
+    export_hint: "部品は色ごとに別々に印刷します: 土台、グラフ、十分位フィン、彫刻番号、底面テキスト。スライサーで1つのオブジェクトにまとめてインポートし（座標共有）、色を割り当ててください。底面テキストは下から正しく読めるよう鏡像です（Open Sans）。",
+    about_link: "ⓘ ツールについて・方法・FAQ →",
+    more_link: "選択した国の主要数値と方法 →",
+    toggle_lbl: "コントロールの表示/非表示（または端末を回転）",
+    sources_note: "出典: 所得/資産 WID.world（aptinc/ahweal、実質価格）；CO₂e Chancel (2021) とWID経由の更新 — 消費+投資ベースのフットプリント、Oxfamの報告書と同じデータ。注: WIDはCO₂分布の品質を低と評価 — トップは桁の目安として解釈してください。",
+    code_pre: "コード: ", code_post: " – 1つのプロンプトからClaudeが構築（READMEを参照）。",
+    loading: "読み込み中 …", building: "構築中 …",
+    status2: (n, m, s, u) => `モデル${n}個 · ${m} · 1 mm = ${s} ${u}`,
+    measure_income: "所得", measure_wealth: "資産", measure_carbon: "CO₂eフットプリント",
+    shape_strip: "ストリップ", shape_spiral: "スパイラル", shape_square: "正方形",
+    lbl_top: (h) => `最高バー ${h}`,
+    lbl_clampnote: (mm) => `${mm} mmで上限`,
+    lbl_merged: (p) => `トップ${p} = 加重平均`,
+    lbl_split: (p) => `合計の半分は p${p}（白い印）`,
+    lbl_pip: (w) => `PIP（${w}）`, welfare_cons: "消費", welfare_inc: "可処分所得",
+    warn_nodata: (c) => `${c}: 選択した指標/通貨のデータなし`,
+    warn_neg: (c) => `${c}: 負の値（負債）は0で切り捨て`,
+    warn_carbon: "CO₂分布: WIDによればデータ品質は低 — トップ値はモデル推計です",
+    warn_lcu: "現地通貨: 高さは国家間で比較できません",
+    warn_nolayers: (c) => `${c}: CO2の内訳なし — 合計のみ表示`,
+    warn_wo_oxfam: "世界: 公共部分はグローバルにOxfam配分できません — 1人あたり均等（Chancel）で表示",
+    warn_pip: "PIP: 1人あたり可処分所得/消費（調査ベース）— WIDの成人1人あたり国民所得より低い水準になるのは想定どおりです",
+    no_models: "モデルなし。",
+    file_measure: { income: "income", wealth: "wealth", carbon: "co2" },
+    file_text: "text",
+  },
 };
 
+const SPRAKEN = ["sv", "en", "ja"];
 const urlLang = new URLSearchParams(location.search).get("lang");
-let LANG = (urlLang === "sv" || urlLang === "en") ? urlLang
+let LANG = SPRAKEN.includes(urlLang) ? urlLang
   : localStorage.getItem("ineq3d_lang") ||
-    ((navigator.language || "en").toLowerCase().startsWith("sv") ? "sv" : "en");
-if (LANG !== "sv" && LANG !== "en") LANG = "en";
+    (() => { const n = (navigator.language || "en").toLowerCase();
+      return n.startsWith("sv") ? "sv" : n.startsWith("ja") ? "ja" : "en"; })();
+if (!SPRAKEN.includes(LANG)) LANG = "en";
 
 export const getLang = () => LANG;
 export const t = (k) => I18N[LANG][k] ?? I18N.en[k] ?? k;
 
-export function toggleLang() {
-  LANG = LANG === "sv" ? "en" : "sv";
-  localStorage.setItem("ineq3d_lang", LANG);
+export function setLang(l) {
+  if (SPRAKEN.includes(l)) { LANG = l; localStorage.setItem("ineq3d_lang", LANG); }
+}
+export function toggleLang() {           // bakåtkompatibel (används ej längre av UI:t)
+  setLang(LANG === "sv" ? "en" : "sv");
 }
 
 // Sätter alla statiska texter (element med data-i18n)
@@ -188,4 +273,13 @@ export function applyStatic() {
   }
 }
 
-export const countryName = (c) => (LANG === "sv" ? c.nameSv : c.nameEn);
+// Japanska landsnamn via webbläsarens inbyggda ISO-namn (Intl.DisplayNames);
+// specialfall för icke-ISO-koder. Faller tillbaka på engelska.
+const jaNamn = (() => {
+  let dn = null;
+  try { dn = new Intl.DisplayNames(["ja"], { type: "region" }); } catch (e) {}
+  const special = { WO: "世界", DD: "ドイツ" };
+  return (c) => special[c.code] ?? (dn && dn.of(c.code)) ?? c.nameEn;
+})();
+export const countryName = (c) =>
+  LANG === "sv" ? c.nameSv : LANG === "ja" ? jaNamn(c) : c.nameEn;
